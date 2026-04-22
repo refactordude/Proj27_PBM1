@@ -2,6 +2,8 @@
 
 home.py가 매 턴마다 새로 구성하고 run_agent_turn()에 주입한다.
 _df_cache는 인스턴스 속성이므로 턴 간 공유되지 않는다(AGENT-07 stateless-per-turn).
+current_tool_call_id는 루프 컨트롤러가 tool 호출 직전에 세팅하며, pivot_to_wide /
+normalize_result 등이 캐시 키로 사용한다 (TOOL-03 / Pattern 3 ambient threading).
 """
 from __future__ import annotations
 
@@ -21,6 +23,7 @@ class AgentContext:
     db_name: str
     user: str
     config: AgentConfig
+    current_tool_call_id: str | None = None
     _df_cache: dict[str, pd.DataFrame] = field(default_factory=dict)
 
     def store_df(self, tool_call_id: str, df: pd.DataFrame) -> None:
