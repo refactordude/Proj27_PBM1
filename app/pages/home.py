@@ -202,21 +202,38 @@ if user_msg and is_openai:
 
     collected_steps: list[AgentStep] = []
     final_step: AgentStep | None = None
+    generator_failed = False
 
     with st.chat_message("assistant"):
         status = st.status("Thinking...", expanded=True)
         with status:
-            for step in run_agent_turn(user_msg, ctx):
-                collected_steps.append(step)
-                _render_step_live(step, status)
-                if step.step_type == "final_answer":
-                    final_step = step
-                    break
-            status.update(
-                label="Done" if final_step and not final_step.error else "Stopped",
-                state="complete",
-                expanded=False,
-            )
+            # UX-07: run_agent_turn이 첫 yield 전에 raise할 수 있다 (예: OpenAI
+            # 클라이언트 초기화 실패). 트레이스백 누출을 막기 위해 try/except로
+            # 감싸고, 민감한 예외 메시지는 st.error로 절대 노출하지 않는다.
+            try:
+                for step in run_agent_turn(user_msg, ctx):
+                    collected_steps.append(step)
+                    _render_step_live(step, status)
+                    if step.step_type == "final_answer":
+                        final_step = step
+                        break
+            except Exception:  # noqa: BLE001
+                generator_failed = True
+                status.update(
+                    label="Error",
+                    state="error",
+                    expanded=False,
+                )
+            else:
+                status.update(
+                    label="Done" if final_step and not final_step.error else "Stopped",
+                    state="complete",
+                    expanded=False,
+                )
+
+        if generator_failed:
+            # UX-07: 사용자에게는 트레이스백 없이 일관된 문구만 노출.
+            st.error("Agent encountered an unexpected error. Check logs.")
 
         # 최종 텍스트 스트리밍 (UX-04).
         if final_step is not None:
