@@ -205,6 +205,53 @@ class ForcedFinalizationOnBudgetExhaustionTest(unittest.TestCase):
         self.assertEqual(final_call_kwargs["tool_choice"], "none")
 
 
+class FirstCreateFailureReturnsFinalAnswerTest(unittest.TestCase):
+    """첫 create() 호출이 예외를 던지면 루프는 단일 final_answer로 조기 종료한다.
+
+    WR-03 regression guard: 루프 레벨 create() 실패는
+    - step_type == "final_answer"
+    - error 필드가 원본 예외 메시지로 채워짐
+    - budget_exhausted == True (Phase 4 UI 조기-종료 분기용)
+    - content에 "[loop error: ...]" 문자열 포함
+    를 만족해야 한다. 강제 종료 경로(_forced_finalization)는 호출되지 않는다.
+    """
+
+    def test_first_create_failure_yields_single_error_final_answer(self) -> None:
+        ctx, fake_client = _make_ctx()
+
+        # 첫 create()가 네트워크 에러를 던진다. 두 번째 응답은 준비하지 않는다
+        # (강제 종료 경로로 빠지지 않는지 create.call_count로 검증).
+        error_message = "RateLimitError: 429"
+        fake_client.chat.completions.create.side_effect = RuntimeError(error_message)
+
+        fake_run_sql = _make_fake_run_sql(content="unused")
+
+        with patch.dict(
+            "app.core.agent.loop.TOOL_REGISTRY",
+            {"run_sql": fake_run_sql},
+            clear=False,
+        ):
+            steps = list(run_agent_turn("q?", ctx))
+
+        # 정확히 1개의 AgentStep만 yield되어야 한다.
+        self.assertEqual(len(steps), 1)
+        step = steps[0]
+
+        # final_answer + error 필드 채워짐 + budget_exhausted=True.
+        self.assertEqual(step.step_type, "final_answer")
+        self.assertIsNotNone(step.error)
+        assert step.error is not None  # narrow for mypy-ish
+        self.assertIn(error_message, step.error)
+        self.assertTrue(step.budget_exhausted)
+
+        # content 포맷 검증 (Phase 4 UI가 그대로 보여줄 문자열).
+        self.assertIn("[loop error:", step.content)
+        self.assertIn(error_message, step.content)
+
+        # create()는 정확히 1회만 호출됨 — 강제 종료 경로로 빠지지 않는다.
+        self.assertEqual(fake_client.chat.completions.create.call_count, 1)
+
+
 class ParallelToolCallsFalseEveryCreateTest(unittest.TestCase):
     """parallel_tool_calls=False는 모든 create() 호출에 (main + forced) 반드시 포함."""
 

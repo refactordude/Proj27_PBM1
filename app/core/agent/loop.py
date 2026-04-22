@@ -24,7 +24,16 @@ from app.core.logger import log_llm
 
 @dataclass
 class AgentStep:
-    """루프가 yield하는 단일 이벤트. Phase 4 UI는 step_type 분기만 하면 된다."""
+    """루프가 yield하는 단일 이벤트. Phase 4 UI는 step_type 분기만 하면 된다.
+
+    final_answer 의미 분기:
+    - error is None / budget_exhausted=False → 정상 최종 답변 (AGENT-02).
+    - error is None / budget_exhausted=True  → 예산 소진 강제 종료 (AGENT-04).
+    - error is not None / budget_exhausted=True → 루프 레벨 create() 실패
+      (네트워크/API 오류). content는 ``"[loop error: ...]"`` 문자열을 담고,
+      error 필드에 원본 예외 메시지가 복제된다. UI는 error 여부로 실패/
+      성공을 구분해야 한다.
+    """
 
     step_type: Literal["tool_call", "tool_result", "final_answer", "budget_exhausted"]
     step_index: int
@@ -217,12 +226,17 @@ def run_agent_turn(
         )
 
         if error is not None or resp is None:
+            # 루프 레벨 create() 실패 (네트워크/API 에러). 강제 종료 경로와
+            # 구별하기 위해 error 필드를 채우고, Phase 4 UI가 조기-종료
+            # 분기를 단일 플래그(budget_exhausted)로 처리할 수 있도록
+            # budget_exhausted=True도 설정한다. AgentStep 도크스트링 참조.
             yield AgentStep(
                 step_type="final_answer",
                 step_index=event_index,
                 content=f"[loop error: {error}]",
                 duration_ms=dur_ms,
                 error=error,
+                budget_exhausted=True,
             )
             return
 
