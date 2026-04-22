@@ -52,6 +52,7 @@ class OpenAIAdapter(LLMAdapter):
             messages=messages,
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
+            extra_headers=self._extra_headers(),
         )
         return (resp.choices[0].message.content or "").strip()
 
@@ -63,6 +64,7 @@ class OpenAIAdapter(LLMAdapter):
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
             stream=True,
+            extra_headers=self._extra_headers(),
         )
         for chunk in stream:
             delta = chunk.choices[0].delta.content if chunk.choices else None
