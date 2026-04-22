@@ -237,30 +237,49 @@ if user_msg and is_openai:
 
         # 최종 텍스트 스트리밍 (UX-04).
         if final_step is not None:
-            final_text = final_step.content or ""
-            if final_step.budget_exhausted and not final_step.error:
-                # UX-06: 예산 소진 강제 종료 시 접두어 삽입.
-                prefix = (
-                    f"*Stopped after {s.app.agent.max_steps} steps; "
-                    f"here's what I found.*\n\n"
+            if final_step.error:
+                # UX-07: loop-error final_answer의 raw `[loop error: ...]`
+                # 내용을 사용자에게 스트리밍하거나 히스토리에 영속화하지 않는다.
+                # 깔끔한 친사용자 문구로 대체하고, 원본 step은 트레이스에만 보존.
+                friendly = (
+                    "(An error occurred while processing your question — "
+                    "please try rephrasing.)"
                 )
-                final_text = prefix + final_text
-            st.write_stream(_stream_text(final_text))
+                st.write_stream(_stream_text(friendly))
 
-            # UX-05: 차트 인라인 렌더 — 가장 최근에 emit된 Figure 1개.
-            last_chart = _last_chart_from_steps(collected_steps)
-            if last_chart is not None:
-                st.plotly_chart(last_chart, use_container_width=True)
+                # UX-03: 에러 케이스에도 트레이스는 여전히 노출 (디버깅용).
+                with st.expander("Show reasoning", expanded=False):
+                    _render_steps_static(collected_steps)
 
-            # UX-03: 전체 트레이스를 접힌 expander로 제공.
-            with st.expander("Show reasoning", expanded=False):
-                _render_steps_static(collected_steps)
+                # HOME-04: raw content 대신 friendly 문구만 영속화.
+                append_chat("assistant", friendly)
+                assistant_index = len(get_chat_history()) - 1
+                append_agent_trace(assistant_index, collected_steps)
+            else:
+                final_text = final_step.content or ""
+                if final_step.budget_exhausted:
+                    # UX-06: 예산 소진 강제 종료 시 접두어 삽입.
+                    prefix = (
+                        f"*Stopped after {s.app.agent.max_steps} steps; "
+                        f"here's what I found.*\n\n"
+                    )
+                    final_text = prefix + final_text
+                st.write_stream(_stream_text(final_text))
 
-            # HOME-04: 히스토리/트레이스 영속화.
-            append_chat("assistant", final_text)
-            # assistant 메시지의 history 인덱스를 트레이스 키로 사용.
-            assistant_index = len(get_chat_history()) - 1
-            append_agent_trace(assistant_index, collected_steps)
+                # UX-05: 차트 인라인 렌더 — 가장 최근에 emit된 Figure 1개.
+                last_chart = _last_chart_from_steps(collected_steps)
+                if last_chart is not None:
+                    st.plotly_chart(last_chart, use_container_width=True)
+
+                # UX-03: 전체 트레이스를 접힌 expander로 제공.
+                with st.expander("Show reasoning", expanded=False):
+                    _render_steps_static(collected_steps)
+
+                # HOME-04: 히스토리/트레이스 영속화.
+                append_chat("assistant", final_text)
+                # assistant 메시지의 history 인덱스를 트레이스 키로 사용.
+                assistant_index = len(get_chat_history()) - 1
+                append_agent_trace(assistant_index, collected_steps)
 
     st.rerun()
 
