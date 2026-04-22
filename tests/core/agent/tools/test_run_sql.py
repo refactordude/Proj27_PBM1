@@ -93,6 +93,38 @@ class RunSqlAllowlistRejectionTest(unittest.TestCase):
         self.assertTrue(result.content.startswith("SQL rejected:"))
         ctx.db_adapter.run_query.assert_not_called()
 
+    def test_cte_body_rejection(self) -> None:
+        """CR-01 regression: non-forbidden-schema table inside CTE body must be rejected.
+
+        The CTE names a non-allowlisted table (`secret_table`) whose name contains
+        none of the forbidden-schema substrings; the belt-and-suspenders substring
+        check cannot help. Only the AST walker can reject this — so this test
+        exercises CR-01 directly instead of relying on _FORBIDDEN_SCHEMAS.
+        """
+        ctx = _mk_ctx(pd.DataFrame({"x": [1]}))
+        sql = "WITH leaked AS (SELECT * FROM secret_table) SELECT * FROM ufs_data"
+        with patch("app.core.agent.tools.run_sql.log_query"):
+            result = run_sql_tool(ctx, RunSqlArgs(sql=sql))
+        self.assertTrue(result.content.startswith("SQL rejected:"))
+        self.assertIn("secret_table", result.content)
+        ctx.db_adapter.run_query.assert_not_called()
+
+    def test_aliased_subquery_rejection(self) -> None:
+        """CR-02 regression: aliased subquery whose alias matches the allowlist must not bypass.
+
+        `FROM (SELECT * FROM secret_table) ufs_data` — the alias `ufs_data`
+        matches the allowlist but the subquery body references `secret_table`,
+        which is not allowlisted. Must be rejected before any DB call.
+        """
+        ctx = _mk_ctx(pd.DataFrame({"x": [1]}))
+        sql = "SELECT * FROM (SELECT * FROM secret_table) ufs_data"
+        with patch("app.core.agent.tools.run_sql.log_query"):
+            result = run_sql_tool(ctx, RunSqlArgs(sql=sql))
+        self.assertTrue(result.content.startswith("SQL rejected:"))
+        self.assertIn("secret_table", result.content)
+        ctx.db_adapter.run_query.assert_not_called()
+
+
 
 class RunSqlFirstGateRejectionTest(unittest.TestCase):
     def test_ddl_rejected_before_db_call(self) -> None:

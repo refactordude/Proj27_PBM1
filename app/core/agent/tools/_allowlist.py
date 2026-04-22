@@ -42,6 +42,9 @@ def _extract_tables(sql: str) -> set[str]:
         for tok in tok_list.tokens:
             if tok.is_whitespace:
                 continue
+            # Tracks the "from/join/into X" handshake: when a TABLE keyword is
+            # seen, the very next non-whitespace token names the table(s).
+            recursed_as_target = False
             if tok.ttype is Keyword and tok.normalized.upper() in _TABLE_KEYWORDS:
                 prev_kw = tok.normalized.upper()
                 continue
@@ -56,10 +59,15 @@ def _extract_tables(sql: str) -> set[str]:
                 elif isinstance(tok, Parenthesis):
                     _recurse(tok)
                     prev_kw = None
+                    recursed_as_target = True
                 elif tok.ttype is Keyword:
                     prev_kw = None
-            # Always descend into any group — catches CTE bodies, WHERE-IN subqueries, UNION branches.
-            if tok.is_group and not isinstance(tok, (Identifier, IdentifierList)):
+            # Always descend into every group — catches CTE bodies
+            # (`WITH x AS (SELECT ... FROM leaked)`), aliased subqueries
+            # (`FROM (SELECT ... FROM leaked) alias`), UNION branches, and
+            # WHERE-IN subqueries. Skip the Parenthesis we already recursed
+            # into above to avoid double-walking (CR-01, CR-02).
+            if tok.is_group and not recursed_as_target:
                 _recurse(tok)
 
     for stmt in parsed:
