@@ -53,6 +53,7 @@ def require_login() -> str:
 
     username = st.session_state.get("username") or "unknown"
     st.session_state["user"] = username
+    st.session_state.setdefault("logout", None)
     with st.sidebar:
         st.write(f"**사용자:** {st.session_state.get('name', username)}")
         try:

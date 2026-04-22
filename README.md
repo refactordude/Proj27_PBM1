@@ -28,10 +28,9 @@ streamlit run app/main.py
 
 | 페이지 | 기능 |
 |---|---|
-| 🏠 Home | 요약 카드, 최근 질의 내역 |
+| 🏠 Home | 요약 카드, 자연어 → SQL 질의 (AI), 최근 질의 내역 |
 | 🔍 Explorer | 테이블 선택 → 필터·정렬·페이징 → CSV/Excel Export |
 | ↔️ Compare | 두 쿼리 결과 좌우 비교, 차이 하이라이트 |
-| 🤖 Ask AI | 자연어 → SQL 미리보기 → 확인 후 실행 → 결과/차트 |
 | ⚙️ Settings | DB/LLM CRUD · 연결 테스트 |
 
 ## 아키텍처

@@ -1,6 +1,6 @@
 """Streamlit 진입점.
 
-인증 → 사이드바 공통 요소 → st.navigation으로 6개 페이지 라우팅.
+인증 → 사이드바 공통 요소 → st.navigation으로 페이지 라우팅.
 
 실행:
     streamlit run app/main.py
@@ -33,9 +33,6 @@ def _build_nav():
                 st.Page(str(pages_dir / "home.py"), title="홈", icon="🏠", default=True),
                 st.Page(str(pages_dir / "explorer.py"), title="데이터 탐색", icon="🔍"),
                 st.Page(str(pages_dir / "compare.py"), title="데이터 비교", icon="↔️"),
-            ],
-            "분석": [
-                st.Page(str(pages_dir / "ask_ai.py"), title="AI 질의", icon="🤖"),
             ],
             "관리": [
                 st.Page(str(pages_dir / "settings_page.py"), title="설정", icon="⚙️"),
