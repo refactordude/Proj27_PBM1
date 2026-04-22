@@ -36,7 +36,6 @@ def _build_nav():
             ],
             "분석": [
                 st.Page(str(pages_dir / "ask_ai.py"), title="AI 질의", icon="🤖"),
-                st.Page(str(pages_dir / "grafana.py"), title="Grafana", icon="📊"),
             ],
             "관리": [
                 st.Page(str(pages_dir / "settings_page.py"), title="설정", icon="⚙️"),

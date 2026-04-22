@@ -29,13 +29,6 @@ llms:
     temperature: 0.0
     max_tokens: 2000
 
-grafana:
-  base_url: "http://localhost:3000"
-  dashboards:
-    - name: "서비스 개요"
-      url: "http://localhost:3000/d/abc123/overview?orgId=1"
-      kiosk: true
-
 app:
   default_database: "Production MySQL (Read-only)"
   default_llm: "GPT-4o Mini"

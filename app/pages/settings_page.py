@@ -1,4 +1,4 @@
-"""F6: 설정 (DB/LLM/Grafana CRUD + 연결 테스트)."""
+"""F6: 설정 (DB/LLM CRUD + 연결 테스트)."""
 from __future__ import annotations
 
 import streamlit as st
@@ -7,7 +7,6 @@ from app.adapters.db.registry import build_adapter as build_db, supported_types 
 from app.adapters.llm.registry import build_adapter as build_llm, supported_types as llm_types
 from app.core.config import (
     DatabaseConfig,
-    GrafanaDashboard,
     LLMConfig,
     save_settings,
 )
@@ -15,10 +14,10 @@ from app.core.runtime import invalidate_settings, settings
 
 s = settings()
 st.title("⚙️ 설정")
-st.caption("여기서 추가한 DB·LLM·Grafana 정보는 `config/settings.yaml`에 저장됩니다.")
+st.caption("여기서 추가한 DB·LLM 정보는 `config/settings.yaml`에 저장됩니다.")
 
-tab_db, tab_llm, tab_gfn, tab_app = st.tabs(
-    ["데이터베이스", "LLM 모델", "Grafana", "앱 기본값"]
+tab_db, tab_llm, tab_app = st.tabs(
+    ["데이터베이스", "LLM 모델", "앱 기본값"]
 )
 
 # ----- Databases -----------------------------------------------------------
@@ -126,43 +125,6 @@ with tab_llm:
                 save_settings(s)
                 invalidate_settings()
                 st.success("추가됨")
-                st.rerun()
-
-# ----- Grafana --------------------------------------------------------------
-with tab_gfn:
-    st.subheader("Grafana 기본")
-    base = st.text_input("Base URL", value=s.grafana.base_url)
-    if base != s.grafana.base_url:
-        s.grafana.base_url = base
-        save_settings(s)
-        invalidate_settings()
-
-    st.subheader("대시보드 목록")
-    for i, d in enumerate(list(s.grafana.dashboards)):
-        with st.expander(d.name):
-            st.caption(d.url)
-            c1, c2 = st.columns([1, 4])
-            if c1.button("삭제", key=f"del_dash_{i}"):
-                s.grafana.dashboards.pop(i)
-                save_settings(s)
-                invalidate_settings()
-                st.rerun()
-            c2.caption(f"kiosk={d.kiosk}")
-
-    st.divider()
-    with st.form("new_dash"):
-        name = st.text_input("이름", key="dash_name")
-        url = st.text_input("URL", key="dash_url")
-        kiosk = st.checkbox("kiosk 모드", value=True)
-        if st.form_submit_button("추가"):
-            if not name or not url:
-                st.error("이름과 URL은 필수입니다.")
-            else:
-                s.grafana.dashboards.append(
-                    GrafanaDashboard(name=name, url=url, kiosk=kiosk)
-                )
-                save_settings(s)
-                invalidate_settings()
                 st.rerun()
 
 # ----- App defaults ---------------------------------------------------------

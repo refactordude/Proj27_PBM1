@@ -38,17 +38,6 @@ class LLMConfig(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
 
 
-class GrafanaDashboard(BaseModel):
-    name: str
-    url: str
-    kiosk: bool = True
-
-
-class GrafanaConfig(BaseModel):
-    base_url: str = ""
-    dashboards: list[GrafanaDashboard] = Field(default_factory=list)
-
-
 class AppConfig(BaseModel):
     default_database: str = ""
     default_llm: str = ""
@@ -59,7 +48,6 @@ class AppConfig(BaseModel):
 class Settings(BaseModel):
     databases: list[DatabaseConfig] = Field(default_factory=list)
     llms: list[LLMConfig] = Field(default_factory=list)
-    grafana: GrafanaConfig = Field(default_factory=GrafanaConfig)
     app: AppConfig = Field(default_factory=AppConfig)
 
 

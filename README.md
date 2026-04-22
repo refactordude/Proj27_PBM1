@@ -1,6 +1,6 @@
 # 사내 데이터 플랫폼 (Streamlit)
 
-PRD v0.1 기반 MVP. MySQL 조회·비교·Export, Grafana 임베드, LLM 기반 자연어 → SQL 질의응답을
+PRD v0.1 기반 MVP. MySQL 조회·비교·Export, LLM 기반 자연어 → SQL 질의응답을
 하나의 Streamlit 앱에서 제공합니다.
 
 ## 빠른 시작
@@ -28,12 +28,11 @@ streamlit run app/main.py
 
 | 페이지 | 기능 |
 |---|---|
-| 🏠 Home | 요약 카드, Grafana 임베드, 최근 질의 내역 |
+| 🏠 Home | 요약 카드, 최근 질의 내역 |
 | 🔍 Explorer | 테이블 선택 → 필터·정렬·페이징 → CSV/Excel Export |
 | ↔️ Compare | 두 쿼리 결과 좌우 비교, 차이 하이라이트 |
 | 🤖 Ask AI | 자연어 → SQL 미리보기 → 확인 후 실행 → 결과/차트 |
-| 📊 Grafana | 등록된 대시보드 목록 및 kiosk 임베드 |
-| ⚙️ Settings | DB/LLM/Grafana CRUD · 연결 테스트 |
+| ⚙️ Settings | DB/LLM CRUD · 연결 테스트 |
 
 ## 아키텍처
 
@@ -54,7 +53,7 @@ app/
   core/                config/auth/logger/sql_safety/session
   utils/               schema/export/viz
 config/
-  settings.yaml        DB/LLM/Grafana 등록 정보 (UI에서 편집)
+  settings.yaml        DB/LLM 등록 정보 (UI에서 편집)
   auth.yaml            사용자 계정 (bcrypt 해시)
 logs/
 ```

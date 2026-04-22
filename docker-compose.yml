@@ -10,9 +10,9 @@ services:
       - ./config:/app/config
       - ./logs:/app/logs
     restart: unless-stopped
-    # MySQL / Grafana는 기존 사내 인프라를 사용한다는 전제라 주석 처리.
+    # MySQL은 기존 사내 인프라를 사용한다는 전제라 주석 처리.
     # 로컬 개발용으로 띄우고 싶으면 아래를 해제하세요.
-    # depends_on: [mysql, grafana]
+    # depends_on: [mysql]
 
   # mysql:
   #   image: mysql:8.4
@@ -23,13 +23,6 @@ services:
   #     MYSQL_PASSWORD: readonly
   #   ports: ["3306:3306"]
   #   volumes: [mysql_data:/var/lib/mysql]
-
-  # grafana:
-  #   image: grafana/grafana:11.2.0
-  #   environment:
-  #     GF_AUTH_ANONYMOUS_ENABLED: "true"
-  #     GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
-  #   ports: ["3000:3000"]
 
 # volumes:
 #   mysql_data:
