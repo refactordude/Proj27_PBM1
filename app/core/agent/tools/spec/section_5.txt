@@ -1,0 +1,9 @@
+§5 — clean_result / Compound Values
+
+(scaffold — Phase 5 ships final text)
+
+TODO: Final UFS spec §5 text to be authored by domain experts in Phase 5.
+
+Summary hint (subject to revision): compound values like "local=1,peer=2"
+are split into parallel rows; the parameter (or Item) column gets a
+"_local" / "_peer" suffix. See tools/normalize_result.py.
