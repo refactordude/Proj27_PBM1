@@ -129,7 +129,9 @@ def run_agent_turn(
     AGENT-03: max_steps는 tool 호출 단위로 증가(응답당이 아님).
     AGENT-04: 예산 소진 시 강제 종료(도구 선택 금지) 1회.
     AGENT-05: time.monotonic() 기반 soft timeout — create() 직전 체크.
-    AGENT-06: 누적 토큰 (prompt+completion usage + tool_result char/4) 추적.
+    AGENT-06: 누적 토큰 추적 — prompt_tokens delta + completion_tokens +
+              tool_result char/4 추정치 (prompt_tokens는 히스토리를 포함하므로
+              단순 += 누적을 피한다).
     OBS-02: 매 create() 라운드트립마다 log_llm() 한 줄 기록.
     """
     client = ctx.llm_adapter._client()  # OpenAIAdapter._client() → openai.OpenAI
@@ -143,6 +145,11 @@ def run_agent_turn(
     turn_start = time.monotonic()
     tool_call_count = 0
     cumulative_tokens = 0
+    # prompt_tokens는 매 create() 응답마다 이전 턴 히스토리를 포함한 전체 값을
+    # 반환하므로 단순 += 누적은 O(n²) 시리즈가 된다. 대신 직전 턴의 prompt_tokens를
+    # 저장해 두고 delta만 합산한다 → 결과적으로 cumulative_tokens ≈
+    # latest_prompt_tokens + Σ completion_tokens + Σ tool_result_estimates.
+    last_prompt_tokens = 0
     loop_step_index = 0  # increments per create() round-trip
 
     while True:
@@ -214,12 +221,16 @@ def run_agent_turn(
             )
             return
 
-        # Token budget update — approximate prompt+completion tokens from usage.
+        # Token budget update — prompt_tokens는 전체 히스토리를 포함하므로
+        # delta(= current_prompt_tokens - last_prompt_tokens)만 더한다.
+        # completion_tokens는 매번 새로 생성된 분량이라 그대로 누적.
         usage = getattr(resp, "usage", None)
         if usage is not None:
-            cumulative_tokens += int(
-                getattr(usage, "prompt_tokens", 0) + getattr(usage, "completion_tokens", 0)
-            )
+            current_prompt_tokens = int(getattr(usage, "prompt_tokens", 0))
+            completion_tokens = int(getattr(usage, "completion_tokens", 0))
+            prompt_delta = max(0, current_prompt_tokens - last_prompt_tokens)
+            cumulative_tokens += prompt_delta + completion_tokens
+            last_prompt_tokens = current_prompt_tokens
 
         assistant_msg = resp.choices[0].message
         tool_calls = getattr(assistant_msg, "tool_calls", None) or []
