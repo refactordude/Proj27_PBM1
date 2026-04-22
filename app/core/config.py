@@ -35,6 +35,7 @@ class LLMConfig(BaseModel):
     api_key: str = ""
     temperature: float = 0.0
     max_tokens: int = 2000
+    headers: dict[str, str] = Field(default_factory=dict)
 
 
 class GrafanaDashboard(BaseModel):

@@ -20,7 +20,6 @@ def _auth_path() -> Path:
     return Path(override) if override else _REPO_ROOT / "config" / "auth.yaml"
 
 
-@st.cache_resource(show_spinner=False)
 def _authenticator() -> stauth.Authenticate:
     with _auth_path().open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)

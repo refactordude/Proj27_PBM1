@@ -24,6 +24,9 @@ class OpenAIAdapter(LLMAdapter):
         base_url = self.config.endpoint or None
         return OpenAI(api_key=api_key, base_url=base_url)
 
+    def _extra_headers(self) -> dict | None:
+        return self.config.headers if self.config.headers else None
+
     def generate_sql(
         self,
         question: str,
