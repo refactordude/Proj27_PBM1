@@ -1,6 +1,6 @@
 """long→wide 피벗 도구 (TOOL-03, UFS 스펙 §3).
 
-허용 테이블(allowed_tables[0])에서 InfoCatergory/Item으로 좁힌 long-form
+허용 테이블(allowed_tables[0])에서 InfoCategory /Item으로 좁힌 long-form
 결과를 받아 df.pivot_table(index='parameter', columns='PLATFORM_ID',
 values='Result', aggfunc='first')로 wide-form으로 변환하고 ctx._df_cache에
 저장한 뒤 df_ref를 돌려준다.
@@ -23,7 +23,7 @@ class PivotToWideArgs(BaseModel):
     category: str = Field(
         ...,
         description=(
-            "Filter value for the allowlist table's InfoCatergory column "
+            "Filter value for the allowlist table's InfoCategory  column "
             "(DB column name is misspelled 'Catergory' — use the typo "
             "when calling)."
         ),
@@ -53,7 +53,7 @@ class PivotToWideTool:
         primary = allowed_tables[0] if allowed_tables else "the allowlist table"
         schema = self.args_model.model_json_schema()
         schema["properties"]["category"]["description"] = (
-            f"Filter value for {primary}.InfoCatergory (DB column name is "
+            f"Filter value for {primary}.InfoCategory  (DB column name is "
             "misspelled 'Catergory' — use the typo when calling)."
         )
         schema["properties"]["item"]["description"] = (
@@ -95,7 +95,7 @@ class PivotToWideTool:
         esc_item = _sql_escape(args.item)
         sql = (
             f"SELECT parameter, PLATFORM_ID, Result FROM {table} "
-            f"WHERE InfoCatergory = '{esc_cat}' AND Item = '{esc_item}' "
+            f"WHERE InfoCategory  = '{esc_cat}' AND Item = '{esc_item}' "
             f"LIMIT {ctx.config.row_cap}"
         )
         # WR-03: route the generated SQL through the same two safety gates as
@@ -158,7 +158,7 @@ class PivotToWideTool:
         if df.empty:
             return ToolResult(
                 content=(
-                    f"No rows matched InfoCatergory={args.category!r}, "
+                    f"No rows matched InfoCategory ={args.category!r}, "
                     f"Item={args.item!r}."
                 )
             )

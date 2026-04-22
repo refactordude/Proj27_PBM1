@@ -1,6 +1,6 @@
 """SAFE-07: CI guard — ensure the correctly-spelled 'InfoCategory' never appears
 under app/core/agent/ (where it would cause silent zero-row returns against the
-live DB column 'InfoCatergory'). The tests directory is excluded.
+live DB column 'InfoCategory '). The tests directory is excluded.
 """
 from __future__ import annotations
 import re
@@ -35,7 +35,7 @@ class InfoCategoryGuardTest(unittest.TestCase):
             hits,
             [],
             f"Found correctly-spelled 'InfoCategory' in {len(hits)} location(s): {hits}. "
-            "The DB column is 'InfoCatergory' (typo preserved). See SAFE-07.",
+            "The DB column is 'InfoCategory ' (typo preserved). See SAFE-07.",
         )
 
     def test_meta_scanner_detects_injected_correct_spelling(self):

@@ -50,7 +50,7 @@ class PivotHappyPathTest(unittest.TestCase):
         self.assertEqual(cached.shape, (2, 2))
         # verify SQL shape
         sql = ctx.db_adapter.run_query.call_args[0][0]
-        self.assertIn("InfoCatergory = '§3'", sql)
+        self.assertIn("InfoCategory  = '§3'", sql)
         self.assertIn("Item = 'wb_enable'", sql)
         self.assertIn("LIMIT 200", sql)
 
@@ -104,7 +104,7 @@ class PivotSqlEscapeTest(unittest.TestCase):
         ctx = _mk_ctx(_LONG_DF, tool_call_id="call_esc")
         pivot_to_wide_tool(ctx, PivotToWideArgs(category="O'Brien", item="wb_enable"))
         sql = ctx.db_adapter.run_query.call_args[0][0]
-        self.assertIn("InfoCatergory = 'O''Brien'", sql)
+        self.assertIn("InfoCategory  = 'O''Brien'", sql)
 
 
 class PivotSafetyGatesTest(unittest.TestCase):

@@ -1,14 +1,14 @@
 """UFS 시드 픽스처 — ship-bar E2E 테스트용 소형 데이터셋.
 
 세 개의 빌더 함수는 실제 ufs_data 테이블이 반환할 법한 long-form 행을
-pd.DataFrame으로 만들어 돌려준다. 컬럼은 (PLATFORM_ID, InfoCatergory, Item,
-Result) — InfoCatergory 의 오타는 운영 DB 컬럼명과 일치하도록 보존한다.
+pd.DataFrame으로 만들어 돌려준다. 컬럼은 (PLATFORM_ID, InfoCategory , Item,
+Result)
 """
 from __future__ import annotations
 
 import pandas as pd
 
-_COLS = ["PLATFORM_ID", "InfoCatergory", "Item", "Result"]
+_COLS = ["PLATFORM_ID", "InfoCategory", "Item", "Result"]
 
 
 def wb_enable_rows() -> pd.DataFrame:
