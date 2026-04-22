@@ -22,11 +22,7 @@ from app.core.sql_safety import validate_and_sanitize
 class PivotToWideArgs(BaseModel):
     category: str = Field(
         ...,
-        description=(
-            "Filter value for the allowlist table's InfoCategory  column "
-            "(DB column name is misspelled 'Catergory' — use the typo "
-            "when calling)."
-        ),
+        description="Filter value for the allowlist table's InfoCategory column.",
     )
     item: str = Field(
         ...,
@@ -53,8 +49,7 @@ class PivotToWideTool:
         primary = allowed_tables[0] if allowed_tables else "the allowlist table"
         schema = self.args_model.model_json_schema()
         schema["properties"]["category"]["description"] = (
-            f"Filter value for {primary}.InfoCategory  (DB column name is "
-            "misspelled 'Catergory' — use the typo when calling)."
+            f"Filter value for {primary}.InfoCategory."
         )
         schema["properties"]["item"]["description"] = (
             f"Filter value for {primary}.Item."

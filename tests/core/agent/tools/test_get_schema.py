@@ -79,26 +79,6 @@ class GetSchemaEmptyDbTest(unittest.TestCase):
         self.assertEqual(payload["distinct_InfoCategory"], [])
 
 
-class GetSchemaTypoPreservationTest(unittest.TestCase):
-    def test_typo_in_sql_and_payload_keys(self) -> None:
-        ctx = _mk_ctx(
-            {"ufs_data": []},
-            pd.DataFrame({"PLATFORM_ID": ["A"]}),
-            pd.DataFrame({"InfoCategory": ["§3"]}),
-        )
-        result = get_schema_tool(ctx, GetSchemaArgs())
-        # Inspect the SQL strings passed to run_query
-        sql_calls = [c.args[0] for c in ctx.db_adapter.run_query.call_args_list]
-        joined = " ".join(sql_calls)
-        self.assertIn("InfoCategory", joined)
-        # Runtime-concat the correct spelling so the SAFE-07 grep test
-        # (plan 02-07) does not match a literal in this source file.
-        correct_spelling = "Info" + "Category"
-        self.assertNotIn(correct_spelling, joined)
-        self.assertIn("distinct_InfoCategory", result.content)
-        self.assertNotIn(f"distinct_{correct_spelling}", result.content)
-
-
 class GetSchemaLoggingTest(unittest.TestCase):
     """WR-04 regression: get_schema must emit exactly ONE log_query entry
     per invocation covering schema lookup + both DISTINCT queries — never
