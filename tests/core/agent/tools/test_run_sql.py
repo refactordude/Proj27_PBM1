@@ -141,6 +141,49 @@ class RunSqlAllowlistRejectionTest(unittest.TestCase):
         ctx.db_adapter.run_query.assert_not_called()
 
 
+class ForbiddenSchemaWordBoundaryTest(unittest.TestCase):
+    """WR-01 regression: the forbidden-schema belt-and-suspenders check must
+    match only actual `<schema>.` prefixes, not substrings inside literals,
+    comments, or other column/value names. The AST walker is the authoritative
+    check; the regex is defense-in-depth and must not cause false positives
+    on legitimate UFS domain queries (e.g. `mysql_buffer_size`).
+    """
+
+    def test_literal_with_mysql_substring_accepted(self) -> None:
+        ctx = _mk_ctx(pd.DataFrame({"x": [1]}))
+        sql = "SELECT * FROM ufs_data WHERE parameter = 'mysql_buffer_size'"
+        with patch("app.core.agent.tools.run_sql.log_query"):
+            result = run_sql_tool(ctx, RunSqlArgs(sql=sql))
+        self.assertFalse(result.content.startswith("SQL rejected:"))
+        ctx.db_adapter.run_query.assert_called_once()
+
+    def test_literal_with_sys_substring_accepted(self) -> None:
+        ctx = _mk_ctx(pd.DataFrame({"x": [1]}))
+        sql = "SELECT * FROM ufs_data WHERE Item = 'system_busy_timeout'"
+        with patch("app.core.agent.tools.run_sql.log_query"):
+            result = run_sql_tool(ctx, RunSqlArgs(sql=sql))
+        self.assertFalse(result.content.startswith("SQL rejected:"))
+        ctx.db_adapter.run_query.assert_called_once()
+
+    def test_comment_with_information_schema_word_accepted(self) -> None:
+        ctx = _mk_ctx(pd.DataFrame({"x": [1]}))
+        sql = "SELECT * FROM ufs_data /* see information_schema tables */"
+        with patch("app.core.agent.tools.run_sql.log_query"):
+            result = run_sql_tool(ctx, RunSqlArgs(sql=sql))
+        self.assertFalse(result.content.startswith("SQL rejected:"))
+        ctx.db_adapter.run_query.assert_called_once()
+
+    def test_actual_schema_prefix_still_rejected(self) -> None:
+        """Regression safety net: real `mysql.user` reference still rejected."""
+        ctx = _mk_ctx(pd.DataFrame({"x": [1]}))
+        with patch("app.core.agent.tools.run_sql.log_query"):
+            result = run_sql_tool(
+                ctx, RunSqlArgs(sql="SELECT * FROM mysql.user")
+            )
+        self.assertTrue(result.content.startswith("SQL rejected:"))
+        ctx.db_adapter.run_query.assert_not_called()
+
+
 class RunSqlFirstGateRejectionTest(unittest.TestCase):
     def test_ddl_rejected_before_db_call(self) -> None:
         ctx = _mk_ctx(pd.DataFrame({"x": [1]}))
