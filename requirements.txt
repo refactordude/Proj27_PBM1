@@ -1,0 +1,15 @@
+streamlit>=1.40
+streamlit-authenticator>=0.3.3
+sqlalchemy>=2.0
+pymysql>=1.1
+pandas>=2.2
+openpyxl>=3.1
+pyyaml>=6.0
+pydantic>=2.7
+sqlparse>=0.5
+openai>=1.50
+requests>=2.32
+plotly>=5.22
+altair>=5.3
+python-dotenv>=1.0
+bcrypt>=4.2

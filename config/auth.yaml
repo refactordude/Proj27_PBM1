@@ -1,0 +1,19 @@
+# streamlit-authenticator 포맷
+# 초기 계정: admin / admin1234 (아래 비밀번호 해시는 "admin1234"의 bcrypt 해시)
+# 실제 배포 전에 반드시 변경하세요.
+credentials:
+  usernames:
+    admin:
+      email: admin@example.com
+      name: 관리자
+      password: "$2b$12$IX/PzUc7NgHw5l3ZJIhXT.jgOxy8sw.vz3mBwZgQ3Vz07t.nXYcT6"
+      roles:
+        - admin
+
+cookie:
+  name: pbm_auth
+  key: "change-this-secret-in-production"
+  expiry_days: 7
+
+preauthorized:
+  emails: []
