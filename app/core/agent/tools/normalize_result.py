@@ -20,7 +20,23 @@ _HEX_RE = re.compile(r"^0x[0-9a-fA-F]+$")
 _INT_RE = re.compile(r"^-?\d+$")
 _FLOAT_RE = re.compile(r"^-?\d+\.\d+$")
 _NULL_LIKE = {"None", "none", "nan", "NaN", "NAN", "", "-", "n/a", "N/A"}
-_COMPOUND_RE = re.compile(r"^\s*\w+\s*=.+(,\s*\w+\s*=.+)+\s*$")
+
+
+def _is_compound(s: str) -> bool:
+    """Return True only for strict `name1=value1,name2=value2[,...]` strings.
+
+    Every comma-separated segment must contain an `=`; otherwise the value is
+    treated as an opaque scalar (e.g. a CSV value `"x=foo,bar,y=baz"` where
+    `bar` is part of the first value — we must not split on that comma and
+    replace `bar` with NA). Strictly requires 2+ segments so a single `k=v`
+    keeps its literal form. (WR-02)
+    """
+    if "," not in s or "=" not in s:
+        return False
+    parts = s.split(",")
+    if len(parts) < 2:
+        return False
+    return all("=" in part for part in parts)
 
 
 def _clean_cell(v: Any) -> Any:
@@ -46,12 +62,20 @@ def _split_compound_rows(df: pd.DataFrame, col: str) -> pd.DataFrame:
     out_rows: list[dict] = []
     for _, row in df.iterrows():
         v = row[col]
-        if isinstance(v, str) and _COMPOUND_RE.match(v):
+        if isinstance(v, str) and _is_compound(v):
             for pair in v.split(","):
+                # _is_compound guarantees every pair contains '=', but guard
+                # anyway in case of future loosening. Skip malformed pairs so
+                # they don't overwrite the parameter suffix with an empty key. (WR-02)
+                if "=" not in pair:
+                    continue
                 k, _, val = pair.partition("=")
+                k = k.strip()
+                if not k:
+                    continue
                 new_row = row.to_dict()
                 if target_col is not None:
-                    new_row[target_col] = f"{row[target_col]}_{k.strip()}"
+                    new_row[target_col] = f"{row[target_col]}_{k}"
                 new_row[col] = _clean_cell(val.strip())
                 out_rows.append(new_row)
         else:

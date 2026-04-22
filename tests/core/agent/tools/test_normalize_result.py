@@ -79,6 +79,30 @@ class CompoundSplitDomainEdgeTest(unittest.TestCase):
         results = sorted(norm["Result"].tolist())
         self.assertEqual(results, [1, 2])
 
+    def test_non_compound_value_with_embedded_comma_preserved(self) -> None:
+        """WR-02 regression: a Result string whose value contains a comma but
+        is not uniformly `k=v,k=v,...` must NOT be split. The previous regex
+        matched `x=foo,bar,y=baz` and silently turned the middle `bar` into a
+        parameter-suffix row with NA Result — destroying real data.
+        """
+        src = pd.DataFrame(
+            {
+                "parameter": ["opaque"],
+                "PLATFORM_ID": ["A"],
+                "Result": ["x=foo,bar,y=baz"],
+            }
+        )
+        ctx = _mk_ctx()
+        ctx.store_df("call_opaque", src)
+        normalize_result_tool(
+            ctx, NormalizeResultArgs(data_ref="call_opaque")
+        )
+        norm = ctx.get_df("call_opaque:normalized")
+        # One row in, one row out — no split. Original value preserved verbatim.
+        self.assertEqual(len(norm), 1)
+        self.assertEqual(norm.iloc[0]["parameter"], "opaque")
+        self.assertEqual(norm.iloc[0]["Result"], "x=foo,bar,y=baz")
+
 
 class LongFormHexTest(unittest.TestCase):
     def test_hex_result_parsed(self) -> None:
