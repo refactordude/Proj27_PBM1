@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from pydantic import ValidationError
@@ -97,6 +97,30 @@ class GetSchemaTypoPreservationTest(unittest.TestCase):
         self.assertNotIn(correct_spelling, joined)
         self.assertIn("distinct_InfoCatergory", result.content)
         self.assertNotIn(f"distinct_{correct_spelling}", result.content)
+
+
+class GetSchemaLoggingTest(unittest.TestCase):
+    """WR-04 regression: get_schema must emit exactly ONE log_query entry
+    per invocation covering schema lookup + both DISTINCT queries — never
+    zero (audit gap), never three (one-per-DB-call fan-out). The user field
+    must indicate the source tool so downstream log analysis can filter.
+    """
+
+    def test_single_log_per_invocation(self) -> None:
+        ctx = _mk_ctx(
+            {"ufs_data": []},
+            pd.DataFrame({"PLATFORM_ID": ["A", "B"]}),
+            pd.DataFrame({"InfoCatergory": ["§3"]}),
+        )
+        with patch("app.core.agent.tools.get_schema.log_query") as mock_log:
+            get_schema_tool(ctx, GetSchemaArgs())
+        self.assertEqual(mock_log.call_count, 1)
+        k = mock_log.call_args.kwargs
+        self.assertIn("[via get_schema]", k["user"])
+        self.assertEqual(k["database"], "unit_db")
+        # Combined row count: 2 PLATFORM_ID + 1 InfoCatergory = 3 distinct values.
+        self.assertEqual(k["rows"], 3)
+        self.assertIsNone(k["error"])
 
 
 class GetSchemaProtocolTest(unittest.TestCase):

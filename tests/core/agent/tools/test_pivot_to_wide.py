@@ -156,6 +156,39 @@ class PivotSafetyGatesTest(unittest.TestCase):
         ctx.db_adapter.run_query.assert_not_called()
 
 
+class PivotLoggingTest(unittest.TestCase):
+    """WR-04 regression: pivot_to_wide must emit exactly ONE log_query entry
+    per invocation on the success path (there is only one DB call on the
+    success path — the SELECT-DISTINCT-filtered fetch). The user field must
+    indicate the source tool for OBS-01 audit filtering.
+    """
+
+    def test_single_log_on_success(self) -> None:
+        ctx = _mk_ctx(_LONG_DF, tool_call_id="call_log_ok")
+        with patch("app.core.agent.tools.pivot_to_wide.log_query") as mock_log:
+            pivot_to_wide_tool(
+                ctx, PivotToWideArgs(category="§3", item="wb_enable")
+            )
+        self.assertEqual(mock_log.call_count, 1)
+        k = mock_log.call_args.kwargs
+        self.assertIn("[via pivot_to_wide]", k["user"])
+        self.assertEqual(k["database"], "unit_db")
+        self.assertEqual(k["rows"], len(_LONG_DF))
+        self.assertIsNone(k["error"])
+
+    def test_single_log_on_empty_allowlist_rejection(self) -> None:
+        ctx = _mk_ctx(_LONG_DF, tool_call_id="call_log_rej")
+        ctx.config.allowed_tables = []
+        with patch("app.core.agent.tools.pivot_to_wide.log_query") as mock_log:
+            pivot_to_wide_tool(
+                ctx, PivotToWideArgs(category="§3", item="wb_enable")
+            )
+        self.assertEqual(mock_log.call_count, 1)
+        k = mock_log.call_args.kwargs
+        self.assertIn("[via pivot_to_wide]", k["user"])
+        self.assertIsNotNone(k["error"])
+
+
 class PivotProtocolTest(unittest.TestCase):
     def test_is_a_tool(self) -> None:
         self.assertIsInstance(pivot_to_wide_tool, Tool)

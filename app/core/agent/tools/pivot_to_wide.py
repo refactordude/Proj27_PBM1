@@ -7,6 +7,7 @@ ctx._df_cache에 저장한 뒤 df_ref를 돌려준다.
 """
 from __future__ import annotations
 
+import time
 import uuid
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field
 from app.core.agent.context import AgentContext
 from app.core.agent.tools._allowlist import AllowlistError, _check_table_allowlist
 from app.core.agent.tools._base import ToolResult
+from app.core.logger import log_query
 from app.core.sql_safety import validate_and_sanitize
 
 
@@ -62,13 +64,56 @@ class PivotToWideTool:
         # drift (e.g. user-controlled table argument, multi-table allowlists).
         safety = validate_and_sanitize(sql, default_limit=ctx.config.row_cap)
         if not safety.ok:
+            # WR-04: log even the rejected path so OBS-01 covers pivot_to_wide.
+            log_query(
+                user=f"{ctx.user} [via pivot_to_wide]",
+                database=ctx.db_name,
+                sql=sql,
+                rows=None,
+                duration_ms=0.0,
+                error=safety.reason,
+            )
             return ToolResult(content=f"SQL rejected: {safety.reason}")
         sanitized = safety.sanitized_sql
         try:
             _check_table_allowlist(sanitized, ctx.config.allowed_tables)
         except AllowlistError as exc:
+            log_query(
+                user=f"{ctx.user} [via pivot_to_wide]",
+                database=ctx.db_name,
+                sql=sanitized,
+                rows=None,
+                duration_ms=0.0,
+                error=str(exc),
+            )
             return ToolResult(content=f"SQL rejected: {exc}")
-        df = ctx.db_adapter.run_query(sanitized)
+        start = time.perf_counter()
+        try:
+            df = ctx.db_adapter.run_query(sanitized)
+        except Exception as exc:  # noqa: BLE001 — mirror run_sql's surface
+            duration_ms = (time.perf_counter() - start) * 1000
+            log_query(
+                user=f"{ctx.user} [via pivot_to_wide]",
+                database=ctx.db_name,
+                sql=sanitized,
+                rows=None,
+                duration_ms=duration_ms,
+                error=str(exc),
+            )
+            return ToolResult(
+                content="Query failed: database error. Refine your SQL."
+            )
+        duration_ms = (time.perf_counter() - start) * 1000
+        # WR-04: single log entry per pivot_to_wide invocation (not per internal
+        # DB call — there is only one DB call on the success path).
+        log_query(
+            user=f"{ctx.user} [via pivot_to_wide]",
+            database=ctx.db_name,
+            sql=sanitized,
+            rows=len(df),
+            duration_ms=duration_ms,
+            error=None,
+        )
         if df.empty:
             return ToolResult(
                 content=(

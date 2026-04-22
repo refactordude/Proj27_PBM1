@@ -7,11 +7,13 @@ distinct 값을 한 번에 받아 필터 인자 환각을 줄인다.
 from __future__ import annotations
 
 import json
+import time
 
 from pydantic import BaseModel, ConfigDict
 
 from app.core.agent.context import AgentContext
 from app.core.agent.tools._base import ToolResult
+from app.core.logger import log_query
 
 
 class GetSchemaArgs(BaseModel):
@@ -32,11 +34,22 @@ class GetSchemaTool:
     def __call__(self, ctx: AgentContext, args: BaseModel) -> ToolResult:
         assert isinstance(args, GetSchemaArgs)
         tables = ctx.config.allowed_tables
-        schema = ctx.db_adapter.get_schema(tables=tables)
         target = tables[0] if tables else "ufs_data"
 
+        # WR-04: emit exactly ONE log_query entry per invocation covering the
+        # whole get_schema round-trip (schema lookup + both DISTINCT queries),
+        # not one per internal DB call. OBS-01 audit trail now includes
+        # get_schema alongside run_sql.
+        start = time.perf_counter()
+        any_error: str | None = None
+        schema: dict = {}
         distinct_platform: list[str] = []
         distinct_category: list[str] = []
+        try:
+            schema = ctx.db_adapter.get_schema(tables=tables)
+        except Exception as exc:  # noqa: BLE001 — surface in log, keep partial payload
+            any_error = f"get_schema failed: {exc}"
+
         try:
             df_p = ctx.db_adapter.run_query(
                 f"SELECT DISTINCT PLATFORM_ID FROM {target} LIMIT 500"
@@ -47,6 +60,11 @@ class GetSchemaTool:
                 )
         except Exception as exc:  # noqa: BLE001 — surface as partial payload
             distinct_platform = [f"(query failed: {exc})"]
+            any_error = (
+                f"{any_error}; platform distinct failed: {exc}"
+                if any_error
+                else f"platform distinct failed: {exc}"
+            )
 
         try:
             df_c = ctx.db_adapter.run_query(
@@ -58,6 +76,23 @@ class GetSchemaTool:
                 )
         except Exception as exc:  # noqa: BLE001
             distinct_category = [f"(query failed: {exc})"]
+            any_error = (
+                f"{any_error}; category distinct failed: {exc}"
+                if any_error
+                else f"category distinct failed: {exc}"
+            )
+
+        duration_ms = (time.perf_counter() - start) * 1000
+        # `sql` field records the tool's activity (no LLM-generated SQL to log);
+        # `rows` is the combined count of distinct values surfaced to the agent.
+        log_query(
+            user=f"{ctx.user} [via get_schema]",
+            database=ctx.db_name,
+            sql=f"[get_schema target={target}]",
+            rows=len(distinct_platform) + len(distinct_category),
+            duration_ms=duration_ms,
+            error=any_error,
+        )
 
         payload = {
             "tables": {
