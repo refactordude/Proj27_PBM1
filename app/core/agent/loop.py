@@ -150,7 +150,11 @@ def run_agent_turn(
     # 저장해 두고 delta만 합산한다 → 결과적으로 cumulative_tokens ≈
     # latest_prompt_tokens + Σ completion_tokens + Σ tool_result_estimates.
     last_prompt_tokens = 0
-    loop_step_index = 0  # increments per create() round-trip
+    # llm_call_index: log_llm()/OBS-02용 카운터 — create() 호출당 정확히 1증가.
+    # event_index: AgentStep.step_index용 — yield 이벤트당 1증가 (tool_call,
+    # tool_result, final_answer 각각 자리). 두 카운터는 의미가 다르므로 분리.
+    llm_call_index = 0
+    event_index = 0
 
     while True:
         # Budget checks BEFORE each create() — AGENT-03/05/06.
@@ -160,17 +164,18 @@ def run_agent_turn(
         tokens_exhausted = cumulative_tokens >= cfg.max_context_tokens
 
         if steps_exhausted or timeout_exceeded or tokens_exhausted:
+            # 강제 종료도 1회의 create()이므로 llm_call_index를 증가시킨다.
             final_text, dur_ms = _forced_finalization(
                 client=client,
                 model=cfg.model,
                 messages=messages,
                 tools=tools,
                 user=ctx.user,
-                step_index=loop_step_index,
+                step_index=llm_call_index,
             )
             yield AgentStep(
                 step_type="final_answer",
-                step_index=loop_step_index,
+                step_index=event_index,
                 content=final_text,
                 duration_ms=dur_ms,
                 budget_exhausted=True,
@@ -204,17 +209,17 @@ def run_agent_turn(
         log_llm(
             user=ctx.user,
             model=cfg.model,
-            question=user_message if loop_step_index == 0 else "",
+            question=user_message if llm_call_index == 0 else "",
             duration_ms=dur_ms,
             error=error,
-            step_index=loop_step_index,
+            step_index=llm_call_index,
             tool_call_names=",".join(tool_names_on_response),
         )
 
         if error is not None or resp is None:
             yield AgentStep(
                 step_type="final_answer",
-                step_index=loop_step_index,
+                step_index=event_index,
                 content=f"[loop error: {error}]",
                 duration_ms=dur_ms,
                 error=error,
@@ -232,6 +237,10 @@ def run_agent_turn(
             cumulative_tokens += prompt_delta + completion_tokens
             last_prompt_tokens = current_prompt_tokens
 
+        # 이 create() 호출은 성공적으로 완료되었으므로 llm_call_index를 소비한다.
+        # 다음 create()는 llm_call_index + 1 값을 사용한다.
+        llm_call_index += 1
+
         assistant_msg = resp.choices[0].message
         tool_calls = getattr(assistant_msg, "tool_calls", None) or []
 
@@ -240,7 +249,7 @@ def run_agent_turn(
             final_text = (assistant_msg.content or "").strip()
             yield AgentStep(
                 step_type="final_answer",
-                step_index=loop_step_index,
+                step_index=event_index,
                 content=final_text,
                 duration_ms=dur_ms,
             )
@@ -269,7 +278,7 @@ def run_agent_turn(
         # Dispatch each tool call in order (병렬 호출 금지 → 보통 1개).
         for tc in tool_calls:
             tool_call_count += 1
-            loop_step_index += 1
+            event_index += 1
             tool_name = tc.function.name
             raw_args = tc.function.arguments or "{}"
 
@@ -287,7 +296,7 @@ def run_agent_turn(
             # Yield tool_call event FIRST so the UI sees intent before dispatch.
             yield AgentStep(
                 step_type="tool_call",
-                step_index=loop_step_index,
+                step_index=event_index,
                 tool_name=tool_name,
                 tool_args=parsed_args_dict,
                 sql=sql_for_step,
@@ -339,9 +348,11 @@ def run_agent_turn(
                 }
             )
 
+            # tool_result는 별개 이벤트이므로 event_index를 한 번 더 증가.
+            event_index += 1
             yield AgentStep(
                 step_type="tool_result",
-                step_index=loop_step_index,
+                step_index=event_index,
                 tool_name=tool_name,
                 tool_args=parsed_args_dict,
                 content=result_content,
@@ -351,5 +362,6 @@ def run_agent_turn(
                 duration_ms=t_dur_ms,
                 error=tool_error,
             )
-
-        loop_step_index += 1  # next create() round-trip index
+        # llm_call_index는 다음 create() 직후 증가하므로 루프 끝에서는
+        # 별도 증가가 필요 없다 — event_index만 tool_call/tool_result 이벤트
+        # 단위로 증가하면 OBS-02(per create() 로그 1줄) 의미가 유지된다.
