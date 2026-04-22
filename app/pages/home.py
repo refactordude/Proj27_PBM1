@@ -172,6 +172,10 @@ for turn_index, turn in enumerate(history):
         if turn["role"] == "assistant":
             past_steps = get_agent_trace(turn_index)
             if past_steps:
+                # UX-05: rerun 이후에도 차트가 보이도록 expander 위에 인라인 렌더.
+                past_chart = _last_chart_from_steps(past_steps)
+                if past_chart is not None:
+                    st.plotly_chart(past_chart, use_container_width=True)
                 with st.expander("Show reasoning", expanded=False):
                     _render_steps_static(past_steps)
 
