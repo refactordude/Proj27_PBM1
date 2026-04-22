@@ -29,11 +29,11 @@ Five coarse phases deliver a complete ReAct-style agentic loop that replaces the
   4. `openai_adapter.py` passes `timeout=httpx.Timeout(30.0)` on every `chat.completions.create` call — verifiable by grepping the file or by a unit test that inspects the call kwargs.
   5. A session-state audit confirms that orphan keys from the old Home flow (`pending_sql`, legacy chart keys) are namespaced or absent; no `KeyError` or stale-key collision occurs when both old and new code coexist during the Phase 4 swap.
 **Plans**: 5 plans
-- [ ] 01-01-PLAN.md — AgentConfig Pydantic model + defaults/bounds/round-trip tests
-- [ ] 01-02-PLAN.md — AgentContext dataclass with instance-level _df_cache + tests
-- [ ] 01-03-PLAN.md — Tool Protocol (@runtime_checkable) + ToolResult Pydantic model + tests
-- [ ] 01-04-PLAN.md — OpenAI adapter httpx.Timeout(30.0) wiring on both call sites + tests
-- [ ] 01-05-PLAN.md — AppConfig.agent composition + YAML round-trip test + settings_page + session-state audit
+- [x] 01-01-PLAN.md — AgentConfig Pydantic model + defaults/bounds/round-trip tests
+- [x] 01-02-PLAN.md — AgentContext dataclass with instance-level _df_cache + tests
+- [x] 01-03-PLAN.md — Tool Protocol (@runtime_checkable) + ToolResult Pydantic model + tests
+- [x] 01-04-PLAN.md — OpenAI adapter httpx.Timeout(30.0) wiring on both call sites + tests
+- [x] 01-05-PLAN.md — AppConfig.agent composition + YAML round-trip test + settings_page + session-state audit
 
 ### Phase 2: Tool Implementations
 **Goal**: All six agent tools are implemented, safety-hardened, registered in the flat `TOOL_REGISTRY`, and independently tested — meaning Phase 3 can import and dispatch any tool without touching tool code again.
