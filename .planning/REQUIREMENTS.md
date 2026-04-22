@@ -131,63 +131,70 @@ Explicitly excluded from both v1 **and** v2. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Populated during roadmap creation (Step 8).
+Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AGENT-01 | — | Pending |
-| AGENT-02 | — | Pending |
-| AGENT-03 | — | Pending |
-| AGENT-04 | — | Pending |
-| AGENT-05 | — | Pending |
-| AGENT-06 | — | Pending |
-| AGENT-07 | — | Pending |
-| AGENT-08 | — | Pending |
-| AGENT-09 | — | Pending |
-| TOOL-01 | — | Pending |
-| TOOL-02 | — | Pending |
-| TOOL-03 | — | Pending |
-| TOOL-04 | — | Pending |
-| TOOL-05 | — | Pending |
-| TOOL-06 | — | Pending |
-| TOOL-07 | — | Pending |
-| TOOL-08 | — | Pending |
-| SAFE-01 | — | Pending |
-| SAFE-02 | — | Pending |
-| SAFE-03 | — | Pending |
-| SAFE-04 | — | Pending |
-| SAFE-05 | — | Pending |
-| SAFE-06 | — | Pending |
-| SAFE-07 | — | Pending |
-| UX-01 | — | Pending |
-| UX-02 | — | Pending |
-| UX-03 | — | Pending |
-| UX-04 | — | Pending |
-| UX-05 | — | Pending |
-| UX-06 | — | Pending |
-| UX-07 | — | Pending |
-| HOME-01 | — | Pending |
-| HOME-02 | — | Pending |
-| HOME-03 | — | Pending |
-| HOME-04 | — | Pending |
-| HOME-05 | — | Pending |
-| OBS-01 | — | Pending |
-| OBS-02 | — | Pending |
-| OBS-03 | — | Pending |
-| TEST-01 | — | Pending |
-| TEST-02 | — | Pending |
-| TEST-03 | — | Pending |
-| TEST-04 | — | Pending |
-| TEST-05 | — | Pending |
-| SHIP-01 | — | Pending |
-| SHIP-02 | — | Pending |
-| SHIP-03 | — | Pending |
+| AGENT-01 | Phase 3 | Pending |
+| AGENT-02 | Phase 3 | Pending |
+| AGENT-03 | Phase 3 | Pending |
+| AGENT-04 | Phase 3 | Pending |
+| AGENT-05 | Phase 3 | Pending |
+| AGENT-06 | Phase 3 | Pending |
+| AGENT-07 | Phase 1 | Pending |
+| AGENT-08 | Phase 1 | Pending |
+| AGENT-09 | Phase 1 | Pending |
+| TOOL-01 | Phase 2 | Pending |
+| TOOL-02 | Phase 2 | Pending |
+| TOOL-03 | Phase 2 | Pending |
+| TOOL-04 | Phase 2 | Pending |
+| TOOL-05 | Phase 2 | Pending |
+| TOOL-06 | Phase 2 | Pending |
+| TOOL-07 | Phase 2 | Pending |
+| TOOL-08 | Phase 2 | Pending |
+| SAFE-01 | Phase 2 | Pending |
+| SAFE-02 | Phase 2 | Pending |
+| SAFE-03 | Phase 2 | Pending |
+| SAFE-04 | Phase 2 | Pending |
+| SAFE-05 | Phase 2 | Pending |
+| SAFE-06 | Phase 4 | Pending |
+| SAFE-07 | Phase 2 | Pending |
+| UX-01 | Phase 4 | Pending |
+| UX-02 | Phase 4 | Pending |
+| UX-03 | Phase 4 | Pending |
+| UX-04 | Phase 4 | Pending |
+| UX-05 | Phase 4 | Pending |
+| UX-06 | Phase 4 | Pending |
+| UX-07 | Phase 4 | Pending |
+| HOME-01 | Phase 4 | Pending |
+| HOME-02 | Phase 4 | Pending |
+| HOME-03 | Phase 4 | Pending |
+| HOME-04 | Phase 4 | Pending |
+| HOME-05 | Phase 5 | Pending |
+| OBS-01 | Phase 2 | Pending |
+| OBS-02 | Phase 3 | Pending |
+| OBS-03 | Phase 1 | Pending |
+| TEST-01 | Phase 2 | Pending |
+| TEST-02 | Phase 3 | Pending |
+| TEST-03 | Phase 3 | Pending |
+| TEST-04 | Phase 2 | Pending |
+| TEST-05 | Phase 3 | Pending |
+| SHIP-01 | Phase 5 | Pending |
+| SHIP-02 | Phase 5 | Pending |
+| SHIP-03 | Phase 5 | Pending |
 
 **Coverage:**
 - v1 requirements: 46 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 46 ⚠️ (will be resolved by roadmapper)
+- Mapped to phases: 46
+- Unmapped: 0 ✓
+
+**Phase distribution:**
+- Phase 1 (Foundation): AGENT-07, AGENT-08, AGENT-09, OBS-03 — 4 requirements
+- Phase 2 (Tool Implementations): TOOL-01 through TOOL-08, SAFE-01 through SAFE-05, SAFE-07, OBS-01, TEST-01, TEST-04 — 17 requirements
+- Phase 3 (Agent Loop Controller): AGENT-01 through AGENT-06, OBS-02, TEST-02, TEST-03, TEST-05 — 10 requirements
+- Phase 4 (Streaming + Trace UX): UX-01 through UX-07, HOME-01 through HOME-04, SAFE-06 — 12 requirements
+- Phase 5 (Test & Polish): HOME-05, SHIP-01, SHIP-02, SHIP-03 — 4 requirements (plus full-suite verification of TEST-01 through TEST-05)
 
 ---
 *Requirements defined: 2026-04-22*
-*Last updated: 2026-04-22 after initial definition*
+*Last updated: 2026-04-22 after roadmap creation — traceability table fully populated*
