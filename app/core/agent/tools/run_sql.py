@@ -93,6 +93,20 @@ class RunSqlTool:
                 error=str(exc),
             )
             return ToolResult(content=f"SQL rejected: {exc}")
+        except Exception as exc:  # noqa: BLE001 — CR-03 belt-and-suspenders
+            # Any other parser/walker failure (future sqlparse edge cases) must
+            # be treated as a rejection, not a crash. Fail closed.
+            log_query(
+                user=ctx.user,
+                database=ctx.db_name,
+                sql=sanitized,
+                rows=None,
+                duration_ms=0.0,
+                error=f"allowlist walker error: {exc}",
+            )
+            return ToolResult(
+                content="SQL rejected: could not verify table allowlist."
+            )
 
         # Gate 3: DB execution (SAFE-05 readonly is inside MySQLAdapter).
         start = time.perf_counter()

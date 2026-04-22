@@ -30,10 +30,15 @@ def _extract_tables(sql: str) -> set[str]:
     tables: set[str] = set()
 
     def _record(ident) -> None:
-        parent = ident.get_parent_name()
+        # Defensive guard: IdentifierList.get_identifiers() can yield bare Tokens
+        # (e.g. LATERAL keyword on MySQL) that lack the get_parent_name/get_real_name
+        # API. Silently skip them — they are not table identifiers. (CR-03)
+        if not hasattr(ident, "get_real_name") or not hasattr(ident, "get_parent_name"):
+            return
         real = ident.get_real_name()
         if real is None:
             return
+        parent = ident.get_parent_name()
         full = f"{parent}.{real}" if parent else real
         tables.add(full.lower())
 

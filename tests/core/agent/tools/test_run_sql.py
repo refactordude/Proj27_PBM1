@@ -124,6 +124,21 @@ class RunSqlAllowlistRejectionTest(unittest.TestCase):
         self.assertIn("secret_table", result.content)
         ctx.db_adapter.run_query.assert_not_called()
 
+    def test_no_attribute_error_on_exotic_sql(self) -> None:
+        """CR-03 regression: exotic MySQL syntax (LATERAL) must not crash the walker.
+
+        sqlparse yields a bare Token (not Identifier) inside IdentifierList for
+        LATERAL joins. The walker must skip such tokens gracefully and still
+        reject the non-allowlisted subquery table. No exception should escape
+        the tool; the tool must return a clean `SQL rejected: ...` ToolResult.
+        """
+        ctx = _mk_ctx(pd.DataFrame({"x": [1]}))
+        sql = "SELECT a.* FROM ufs_data a, LATERAL (SELECT * FROM secret_table) b"
+        with patch("app.core.agent.tools.run_sql.log_query"):
+            # Must not raise — must return a rejection ToolResult.
+            result = run_sql_tool(ctx, RunSqlArgs(sql=sql))
+        self.assertTrue(result.content.startswith("SQL rejected:"))
+        ctx.db_adapter.run_query.assert_not_called()
 
 
 class RunSqlFirstGateRejectionTest(unittest.TestCase):
