@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 from pydantic import ValidationError
@@ -105,6 +105,55 @@ class PivotSqlEscapeTest(unittest.TestCase):
         pivot_to_wide_tool(ctx, PivotToWideArgs(category="O'Brien", item="wb_enable"))
         sql = ctx.db_adapter.run_query.call_args[0][0]
         self.assertIn("InfoCatergory = 'O''Brien'", sql)
+
+
+class PivotSafetyGatesTest(unittest.TestCase):
+    """WR-03 regression: the two-gate safety pipeline (validate_and_sanitize
+    + _check_table_allowlist) must be invoked on pivot_to_wide's generated SQL,
+    matching run_sql's contract. If the allowlist is tampered with (e.g. empty
+    list so the hard-coded 'ufs_data' fallback is not allowlisted), the gate
+    must reject before the DB adapter is touched.
+    """
+
+    def test_safety_gates_invoked(self) -> None:
+        ctx = _mk_ctx(_LONG_DF, tool_call_id="call_gate")
+        with patch(
+            "app.core.agent.tools.pivot_to_wide.validate_and_sanitize",
+            wraps=__import__(
+                "app.core.sql_safety", fromlist=["validate_and_sanitize"]
+            ).validate_and_sanitize,
+        ) as mock_validate, patch(
+            "app.core.agent.tools.pivot_to_wide._check_table_allowlist",
+            wraps=__import__(
+                "app.core.agent.tools._allowlist",
+                fromlist=["_check_table_allowlist"],
+            )._check_table_allowlist,
+        ) as mock_allow:
+            pivot_to_wide_tool(
+                ctx, PivotToWideArgs(category="§3", item="wb_enable")
+            )
+        mock_validate.assert_called_once()
+        mock_allow.assert_called_once()
+        # First positional arg to _check_table_allowlist is the sanitized SQL;
+        # second is the allowed tables list.
+        call_args = mock_allow.call_args
+        self.assertEqual(call_args[0][1], ["ufs_data"])
+
+    def test_empty_allowlist_fallback_is_rejected(self) -> None:
+        """If `allowed_tables` is empty, pivot_to_wide falls back to the
+        hard-coded 'ufs_data' table name in its SQL. The allowlist gate
+        must then reject (empty allowlist means nothing is allowed),
+        fail-closed before the DB adapter is called. This guards the
+        WR-03 concern about the hard-coded fallback drifting from the
+        single source of truth in config.
+        """
+        ctx = _mk_ctx(_LONG_DF, tool_call_id="call_violate")
+        ctx.config.allowed_tables = []
+        result = pivot_to_wide_tool(
+            ctx, PivotToWideArgs(category="§3", item="wb_enable")
+        )
+        self.assertTrue(result.content.startswith("SQL rejected:"))
+        ctx.db_adapter.run_query.assert_not_called()
 
 
 class PivotProtocolTest(unittest.TestCase):

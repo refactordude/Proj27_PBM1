@@ -12,7 +12,9 @@ import uuid
 from pydantic import BaseModel, Field
 
 from app.core.agent.context import AgentContext
+from app.core.agent.tools._allowlist import AllowlistError, _check_table_allowlist
 from app.core.agent.tools._base import ToolResult
+from app.core.sql_safety import validate_and_sanitize
 
 
 class PivotToWideArgs(BaseModel):
@@ -53,7 +55,20 @@ class PivotToWideTool:
             f"WHERE InfoCatergory = '{esc_cat}' AND Item = '{esc_item}' "
             f"LIMIT {ctx.config.row_cap}"
         )
-        df = ctx.db_adapter.run_query(sql)
+        # WR-03: route the generated SQL through the same two safety gates as
+        # run_sql. The SQL shape is static and `table` comes from allowlist
+        # config, so the current exposure is limited — but running both gates
+        # here keeps a single source of truth and guards against future
+        # drift (e.g. user-controlled table argument, multi-table allowlists).
+        safety = validate_and_sanitize(sql, default_limit=ctx.config.row_cap)
+        if not safety.ok:
+            return ToolResult(content=f"SQL rejected: {safety.reason}")
+        sanitized = safety.sanitized_sql
+        try:
+            _check_table_allowlist(sanitized, ctx.config.allowed_tables)
+        except AllowlistError as exc:
+            return ToolResult(content=f"SQL rejected: {exc}")
+        df = ctx.db_adapter.run_query(sanitized)
         if df.empty:
             return ToolResult(
                 content=(
