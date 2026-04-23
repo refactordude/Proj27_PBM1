@@ -1,7 +1,13 @@
-# Internal Data Platform (Streamlit)
+# Internal Data Platform — Agentic UFS Q&A (Streamlit)
 
-MVP based on PRD v0.1. Provides MySQL querying / comparison / export and
-LLM-powered natural-language-to-SQL Q&A in a single Streamlit app.
+An internal Streamlit app for querying a MySQL database of UFS (Universal
+Flash Storage) device benchmark profiles. The Home page runs an **autonomous
+ReAct agent loop** over OpenAI tool-calling: the user asks a UFS question in
+plain language, and the agent iteratively dispatches `run_sql`,
+`pivot_to_wide`, `normalize_result`, and `make_chart` against the read-only
+`ufs_data` table until it can stream back a final answer with a chosen
+Plotly chart. Explorer / Compare / Settings remain single-shot pages for
+ad-hoc SQL and CRUD.
 
 ## Quick start
 
@@ -24,19 +30,45 @@ streamlit run app/main.py
 
 Default login: `admin` / `admin1234` (must be changed before deployment).
 
-## Features (PRD F1–F6)
+## Features
 
 | Page | Description |
 |---|---|
-| 🏠 Home | Summary cards, natural-language → SQL (AI), recent query history |
+| 🏠 Home | **Agentic UFS Q&A** — streamed answer + collapsible tool trace + Plotly chart |
 | 🔍 Explorer | Pick a table → filter / sort / paginate → CSV / Excel export |
 | ↔️ Compare | Side-by-side comparison of two query results with diff highlighting |
 | ⚙️ Settings | CRUD for DB / LLM configs · connection test |
 
+### AI Q&A (Home page)
+
+The Home page runs an autonomous **ReAct loop** over OpenAI tool-calling
+(`chat.completions` with `tools=[...]`). Ask a UFS question in natural
+language — the agent decides on each step whether to call `run_sql`
+(SELECT against `ufs_data`), `pivot_to_wide` (long→wide reshape per UFS
+spec §3), `normalize_result` (hex / compound / null cleaning per §5),
+`get_schema` / `get_schema_docs` (context lookup), or `make_chart` (pick a
+Plotly chart type and axis). Each step streams live with a collapsible trace
+panel; the final answer includes the LLM-chosen chart. There is no "preview
+SQL → click Execute" step — the agent runs the whole loop autonomously
+inside the safety budget below.
+
+- **Provider: OpenAI-only in v1.** The Home agent calls `chat.completions`
+  with `tools=[...]`, which requires a tool-capable model (`gpt-4o`,
+  `gpt-4o-mini`, `gpt-4.1-mini`). Other providers (Ollama, etc.) stay
+  available on Settings / Compare / Explorer but cannot drive the Home loop.
+- **Safety posture:** SELECT-only SQL (`sql_safety.validate_and_sanitize`),
+  table allowlist `["ufs_data"]`, read-only session, and a per-turn budget
+  (`max_steps=5`, `row_cap=200`, `timeout_s=30`) enforced inside the loop.
+- **Observability:** every LLM round-trip and every SQL execution is
+  appended as a JSONL line to `logs/llm.log` and `logs/queries.log`.
+
 ## Architecture
 
 - **Adapter pattern** abstracts both DB and LLM: adding a new DB or model only requires writing an adapter class and registering it.
-- **SQL safety**: `sql_safety.py` allows SELECT-family statements only, auto-injects `LIMIT`, and blocks DDL/DML.
+- **Agent loop** (`app/core/agent/`): stateless-per-turn ReAct dispatcher
+  (`run_agent_turn`) + flat `TOOL_REGISTRY` of six tools; streamlit-agnostic
+  so it can be unit-tested with a mocked OpenAI client.
+- **SQL safety**: `sql_safety.py` allows SELECT-family statements only, auto-injects `LIMIT`, and blocks DDL/DML. Both `run_sql` and `pivot_to_wide` route through the same gate.
 - **Read-only enforcement**: `readonly: true` option in Settings plus runtime verification — double protection.
 - **Logging**: every query and LLM call is written to `logs/queries.log` and `logs/llm.log`.
 
@@ -45,11 +77,13 @@ Default login: `admin` / `admin1234` (must be changed before deployment).
 ```
 app/
   main.py              entry point (st.navigation)
-  pages/               one page per F1–F6
+  pages/               one page per F1–F6 (home = agentic Q&A)
   adapters/
     db/                DB adapters (mysql + registry)
     llm/               LLM adapters (openai, ollama + registry)
   core/                config / auth / logger / sql_safety / session
+    agent/             ReAct loop + TOOL_REGISTRY (run_sql, pivot_to_wide,
+                       normalize_result, get_schema, get_schema_docs, make_chart)
   utils/               schema / export / viz
 config/
   settings.yaml        DB/LLM registrations (edited via UI)
