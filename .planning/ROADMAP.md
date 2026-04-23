@@ -74,7 +74,9 @@ Five coarse phases deliver a complete ReAct-style agentic loop that replaces the
   3. The final assistant answer text streams progressively via `st.write_stream` into the chat bubble — it does not appear all at once after a silent pause.
   4. Selecting a non-OpenAI LLM in the sidebar disables the chat input and shows a friendly redirect message pointing to Settings — no agent loop is triggered.
   5. Explorer (`/pages/explorer.py`), Compare (`/pages/compare.py`), and Settings (`/pages/settings_page.py`) pages load and function correctly after the Home rewrite — no import errors, no broken session-state keys, no regressions in their UI.
-**Plans**: TBD
+**Plans**: 2 plans
+- [x] 04-01-PLAN.md — _AGENT_TRACE_KEY + append_agent_trace/get_agent_trace helpers in session.py + unit tests (HOME-04) (Wave 1)
+- [x] 04-02-PLAN.md — Home page rewrite: st.chat_input → run_agent_turn with live st.status trace + st.write_stream final + st.expander collapse + inline Plotly + SAFE-06 disable + old pending_sql flow deletion (UX-01..07, HOME-01..04, SAFE-06) (Wave 2)
 **UI hint**: yes
 
 ### Phase 5: Test & Polish
@@ -98,9 +100,9 @@ Five coarse phases deliver a complete ReAct-style agentic loop that replaces the
 | 1. Foundation | 0/5 | Not started | - |
 | 2. Tool Implementations | 0/TBD | Not started | - |
 | 3. Agent Loop Controller | 0/2 | Not started | - |
-| 4. Streaming + Trace UX | 0/TBD | Not started | - |
+| 4. Streaming + Trace UX | 0/2 | Not started | - |
 | 5. Test & Polish | 0/TBD | Not started | - |
 
 ---
 *Roadmap created: 2026-04-22*
-*Last updated: 2026-04-23 after Phase 3 planning (2 plans across 2 waves)*
+*Last updated: 2026-04-23 after Phase 4 planning (2 plans across 2 waves)*
