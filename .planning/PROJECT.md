@@ -30,26 +30,29 @@ Ask a UFS question in plain language and get a correct, visualized answer — wi
 - ✓ Pydantic-based typed config models (`Settings`, `DatabaseConfig`, `LLMConfig`, `AppConfig`) — existing
 - ✓ Docker / docker-compose deployment — existing
 
+### Validated
+
+<!-- v1.0 "Agentic UFS Q&A" — shipped 2026-04-23. See .planning/milestones/v1.0-REQUIREMENTS.md for full traceability. -->
+
+- ✓ ReAct agentic loop on Home over OpenAI `chat.completions` + `tools=[...]` — v1.0
+- ✓ `run_sql` tool with two-gate SQL safety (sql_safety + sqlparse allowlist walker), auto-LIMIT=200, `["ufs_data"]` allowlist, untrusted-data framing + 500-char cell cap, JSONL audit logging — v1.0
+- ✓ `get_schema` tool returning tables/columns/distinct PLATFORM_ID + InfoCatergory — v1.0
+- ✓ `pivot_to_wide` tool — long→wide via `df.pivot_table(aggfunc="first")` with `AgentContext._df_cache` — v1.0
+- ✓ `normalize_result` tool — UFS §5 hex/None/compound handling, row-split compound values — v1.0
+- ✓ `get_schema_docs` tool — section §1–§7 on-demand retrieval (scaffold text; domain-final text is a future polish item) — v1.0
+- ✓ `make_chart` tool — Plotly bar/line/scatter/heatmap via plotly.express — v1.0
+- ✓ Per-turn budget enforcement — `max_steps=5`, `row_cap=200`, `timeout_s=30`, `max_context_tokens=30000`; forced finalization via `tool_choice="none"` — v1.0
+- ✓ Live trace UX on Home — `st.status` live container, SQL in `st.code`, inline Plotly chart, `st.write_stream` final answer, `st.expander` collapse — v1.0
+- ✓ Stateless per user turn (fresh `AgentContext` with instance-level `_df_cache`) — v1.0
+- ✓ Old `pending_sql` / preview / confirm flow removed from `app/pages/home.py`; Explorer / Compare / Settings unchanged — v1.0
+- ✓ Focused test coverage — 129 stdlib unittest tests across config, context, tools, safety walker, loop, ship-bar E2E — v1.0
+- ✓ Ship bar — 3 mocked-DB E2E scenarios + operator-confirmed live-DB validation on seeded `ufs_data` — v1.0
+
 ### Active
 
-<!-- Current milestone. Hypotheses until shipped. -->
+<!-- Next milestone. Open — run /gsd-new-milestone to plan the next cycle. -->
 
-- [ ] Replace Home AI Q&A with a ReAct-style agentic loop over OpenAI tool-calling (raw `chat.completions` with `tools=[...]`)
-- [ ] `run_sql` tool: executes through existing `sql_safety.validate_and_sanitize`, auto-LIMIT=200, table allowlist `["ufs_data"]`
-- [ ] `get_schema` tool: returns tables, columns, distinct `PLATFORM_ID` and `InfoCatergory` values for disambiguation
-- [ ] `pivot_to_wide(category, item)` tool: server-side long→wide pivot per UFS spec §3
-- [ ] `normalize_result(values)` tool: applies UFS spec §5 `clean_result` helper (hex, "None"/errors → NULL, compound `local=…,peer=…` splitter)
-- [ ] `get_schema_docs(section)` tool: retrieves sections §1–§7 of the UFS schema spec on demand (not baked into system prompt)
-- [ ] `make_chart` tool: `chart_type ∈ {bar, line, scatter, heatmap}`, `x`, `y`, `color`, `title`, `data_ref` — returns Plotly figure rendered via `st.plotly_chart`
-- [ ] Per-turn budget enforcement: `max_steps=5`, `row_cap=200`, `timeout_s=30`
-- [ ] Streamed + collapsible trace UX: each step (model thinking, SQL, tool result row count, chart) streams live; full trace collapses into an expander after the final answer
-- [ ] Stateless per user turn (no cross-turn DataFrame reference / `result_N` IDs in v1)
-- [ ] Remove the existing "generate SQL → confirm → execute" flow from `app/pages/home.py`; Explorer / Compare / Settings must continue to work unchanged
-- [ ] Focused test coverage: unit tests for each new tool + one integration test for the loop with a mocked OpenAI client
-- [ ] Ship bar: seeded `ufs_data` DB answers 3 representative UFS questions correctly with streamed trace + Plotly chart:
-  1. Cross-device compare — "Compare `wb_enable` across all devices."
-  2. Top-N / ranking — "Which devices have the largest `total_raw_device_capacity`?"
-  3. Brand-vs-brand — "Compare `life_time_estimation_a` for Samsung vs OPPO devices."
+(none — current milestone complete; awaiting next cycle)
 
 ### Out of Scope
 
@@ -102,16 +105,16 @@ The agentic loop adds two more: a **table allowlist** (`["ufs_data"]` — the ag
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Multi-step ReAct loop (vs. two-step or approval-gated) | User wants autonomous drill-down; existing guardrails (SELECT-only, allowlist, `max_steps=5`) bound blast radius. | — Pending |
-| Replace Home AI Q&A entirely (vs. new page / mode toggle) | Single clear UX; avoids maintaining two NL flows; the user-confirm step is no longer meaningful when the agent iterates. | — Pending |
-| UFS-specialized (vs. general) | The whole value is schema-aware reasoning (Result quirks, pivot idiom). Generic agent would require the user to re-teach the schema every turn. | — Pending |
-| Schema docs retrieved on demand via `get_schema_docs` tool (vs. baked into system prompt) | Keeps every-turn token cost low; agent pulls only the section relevant to the current question. | — Pending |
-| Stateless per turn in v1 (vs. conversation + result refs) | Simpler; cheaper; postpones `result_N` id scheme and DataFrame cache until we see whether follow-ups are a common pattern. | — Pending |
-| LLM picks chart via `make_chart` tool (vs. heuristic `auto_chart`) | Cross-device UFS comparisons need chart-type reasoning (heatmap vs bar vs line) the heuristic can't do. | — Pending |
-| Raw OpenAI `chat.completions` + `tools=[]` loop (vs. Agents SDK / LangGraph) | OpenAI-only + simple replace + ship-fast intent — framework is dead weight. | — Pending |
-| `row_cap=200` + "refine" semantics (vs. auto-sample + summarize) | Forces agent to write aggregating SQL; raw rows stay below a context-window threshold. If exceeded, tool returns a refine signal instead of truncated rows. | — Pending |
-| Focused new-code tests only (vs. comprehensive backfill) | Existing SQL-safety gaps are known; this milestone is additive, not a hardening cycle. | — Pending |
-| OpenAI-only for the agent in v1 (vs. Ollama / Anthropic parity) | Tool-calling API divergence; smallest testing surface; revisit after v1 validates UX. | — Pending |
+| Multi-step ReAct loop (vs. two-step or approval-gated) | User wants autonomous drill-down; existing guardrails (SELECT-only, allowlist, `max_steps=5`) bound blast radius. | ✓ Validated in v1.0 |
+| Replace Home AI Q&A entirely (vs. new page / mode toggle) | Single clear UX; avoids maintaining two NL flows; the user-confirm step is no longer meaningful when the agent iterates. | ✓ Validated in v1.0 |
+| UFS-specialized (vs. general) | The whole value is schema-aware reasoning (Result quirks, pivot idiom). Generic agent would require the user to re-teach the schema every turn. | ✓ Validated in v1.0 |
+| Schema docs retrieved on demand via `get_schema_docs` tool (vs. baked into system prompt) | Keeps every-turn token cost low; agent pulls only the section relevant to the current question. | ✓ Validated in v1.0 |
+| Stateless per turn in v1 (vs. conversation + result refs) | Simpler; cheaper; postpones `result_N` id scheme and DataFrame cache until we see whether follow-ups are a common pattern. | ✓ Validated in v1.0 |
+| LLM picks chart via `make_chart` tool (vs. heuristic `auto_chart`) | Cross-device UFS comparisons need chart-type reasoning (heatmap vs bar vs line) the heuristic can't do. | ✓ Validated in v1.0 |
+| Raw OpenAI `chat.completions` + `tools=[]` loop (vs. Agents SDK / LangGraph) | OpenAI-only + simple replace + ship-fast intent — framework is dead weight. | ✓ Validated in v1.0 |
+| `row_cap=200` + "refine" semantics (vs. auto-sample + summarize) | Forces agent to write aggregating SQL; raw rows stay below a context-window threshold. If exceeded, tool returns a refine signal instead of truncated rows. | ✓ Validated in v1.0 |
+| Focused new-code tests only (vs. comprehensive backfill) | Existing SQL-safety gaps are known; this milestone is additive, not a hardening cycle. | ✓ Validated in v1.0 |
+| OpenAI-only for the agent in v1 (vs. Ollama / Anthropic parity) | Tool-calling API divergence; smallest testing surface; revisit after v1 validates UX. | ✓ Validated in v1.0 |
 
 ## Evolution
 
@@ -130,5 +133,21 @@ This document evolves at phase transitions and milestone boundaries.
 3. Audit Out of Scope — reasons still valid?
 4. Update Context with current state
 
+## Current State
+
+**Shipped:** v1.0 — Agentic UFS Q&A — 2026-04-23
+
+Home page is now driven by an autonomous ReAct loop over OpenAI tool-calling. Users ask a UFS question and get a correct, visualized answer streamed live with a collapsible trace — no SQL to write, review, or confirm. 129 unit + integration + mocked-DB E2E tests green. Operator-validated on seeded `ufs_data` for the 3 ship-bar scenarios.
+
+**Codebase:** ~5,450 LOC Python; Streamlit 1.40+, SQLAlchemy 2.0, Pydantic 2, OpenAI SDK 1.50+, Plotly 6.7.
+**New in v1.0:** `app/core/agent/` subpackage (config, context, loop, 6 tools + allowlist walker + InfoCategory CI guard); `app/pages/home.py` rewritten from pending-SQL-confirm flow to live agentic trace UX; `httpx.Timeout(30.0)` wired onto every OpenAI call; extended `log_llm()` telemetry.
+
+**Known tech debt (captured for future polish):**
+- Phase 3/4 PLAN.md files were written but never committed (planner audit-trail gap — CONTEXT/SUMMARY/VERIFICATION preserved).
+- UFS §1–§7 spec files are scaffold-only; domain-expert authoring is a future task.
+- `st.write_stream` uses a char-by-char sleep wrapper (~2s for a 100-word answer); could switch to true OpenAI `stream=True` for the final call.
+
+**Next milestone:** Open. Run `/gsd-new-milestone` to plan the next cycle. Likely candidates: test backfill for existing safety modules (HARD-01), log rotation (HARD-02), Ollama/Anthropic tool-calling parity (PROV-01/02), cross-turn memory (MEM-01/02).
+
 ---
-*Last updated: 2026-04-22 after initialization*
+*Last updated: 2026-04-23 after v1.0 milestone*
