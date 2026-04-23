@@ -10,6 +10,7 @@ _CHAT_HISTORY_KEY = "chat_history"
 _RECENT_QUERIES_KEY = "recent_queries"
 _SELECTED_DB_KEY = "selected_db"
 _SELECTED_LLM_KEY = "selected_llm"
+_AGENT_TRACE_KEY = "agent_trace_v1"
 
 
 def get_chat_history() -> list[dict[str, Any]]:
@@ -53,3 +54,19 @@ def get_selected_llm(default: str | None = None) -> str | None:
 
 def set_selected_llm(name: str | None) -> None:
     st.session_state[_SELECTED_LLM_KEY] = name
+
+
+def append_agent_trace(turn_index: int, steps: list[Any]) -> None:
+    """턴 인덱스별로 AgentStep 리스트를 세션 상태에 저장한다.
+
+    HOME-04: chat_history에는 user/assistant 메시지 페어만 들어가고,
+    전체 step 트레이스는 _AGENT_TRACE_KEY 슬롯에 턴 인덱스로 보관된다.
+    """
+    bucket: dict[int, list[Any]] = st.session_state.setdefault(_AGENT_TRACE_KEY, {})
+    bucket[turn_index] = list(steps)
+
+
+def get_agent_trace(turn_index: int) -> list[Any]:
+    """turn_index의 저장된 AgentStep 리스트를 반환. 없으면 빈 리스트."""
+    bucket: dict[int, list[Any]] = st.session_state.get(_AGENT_TRACE_KEY, {})
+    return bucket.get(turn_index, [])

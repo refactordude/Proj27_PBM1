@@ -1,0 +1,10 @@
+§3 — Long→Wide Pivot
+
+(scaffold — Phase 5 ships final text)
+
+TODO: Final UFS spec §3 text to be authored by domain experts in Phase 5.
+
+Summary hint (subject to revision): the canonical long→wide reshape is
+df.pivot_table(index="parameter", columns="PLATFORM_ID", values="Result",
+               aggfunc="first")
+Duplicates collapse to the first row. See tools/pivot_to_wide.py.

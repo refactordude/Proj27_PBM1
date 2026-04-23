@@ -1,0 +1,5 @@
+§7 — Device Naming Conventions
+
+(scaffold — Phase 5 ships final text)
+
+TODO: Final UFS spec §7 text to be authored by domain experts in Phase 5.

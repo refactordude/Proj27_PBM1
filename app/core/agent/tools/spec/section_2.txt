@@ -1,0 +1,7 @@
+§2 — Table Schema (ufs_data)
+
+(scaffold — Phase 5 ships final text)
+
+TODO: Final UFS spec §2 text to be authored by domain experts in Phase 5.
+Note: the InfoCatergory column name intentionally preserves the DB typo
+(see SAFE-07). Do not rename.

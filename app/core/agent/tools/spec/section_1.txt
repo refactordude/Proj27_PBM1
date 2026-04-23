@@ -1,0 +1,6 @@
+§1 — UFS Benchmark Overview
+
+(scaffold — Phase 5 ships final text)
+
+TODO: Final UFS spec §1 text to be authored by domain experts in Phase 5.
+This placeholder keeps get_schema_docs functional during agent development.

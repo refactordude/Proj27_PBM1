@@ -70,6 +70,8 @@ def log_llm(
     sql: str | None = None,
     duration_ms: float | None = None,
     error: str | None = None,
+    step_index: int | None = None,
+    tool_call_names: str | None = None,
 ) -> None:
     _make_logger("llm", "llm.log").info(
         json.dumps(
@@ -81,6 +83,8 @@ def log_llm(
                 "sql": sql,
                 "duration_ms": duration_ms,
                 "error": error,
+                "step_index": step_index,
+                "tool_call_names": tool_call_names,
             },
             ensure_ascii=False,
         )

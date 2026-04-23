@@ -1,0 +1,5 @@
+§4 — Units and Scaling
+
+(scaffold — Phase 5 ships final text)
+
+TODO: Final UFS spec §4 text to be authored by domain experts in Phase 5.

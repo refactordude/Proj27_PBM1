@@ -12,6 +12,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field
 
+from app.core.agent.config import AgentConfig
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_SETTINGS_PATH = _REPO_ROOT / "config" / "settings.yaml"
 
@@ -43,6 +45,7 @@ class AppConfig(BaseModel):
     default_llm: str = ""
     query_row_limit: int = 1000
     recent_query_history: int = 20
+    agent: AgentConfig = Field(default_factory=AgentConfig)
 
 
 class Settings(BaseModel):
