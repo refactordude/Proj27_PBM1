@@ -39,6 +39,8 @@ app:
     max_steps: 5
     row_cap: 200
     timeout_s: 30
+    # 에이전트의 run_sql이 질의할 수 있는 테이블 목록.
+    # Settings UI의 [앱 기본값 → 에이전트 허용 테이블]에서도 편집 가능.
     allowed_tables:
       - "ufs_data"
     max_context_tokens: 30000
