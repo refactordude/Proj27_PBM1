@@ -17,10 +17,13 @@ class AgentConfig(BaseModel):
     """
 
     model: str = Field(
-        default="gpt-4.1-mini",
+        default="",
         description=(
-            "OpenAI tool-capable model. Swap to 'gpt-4.1' for accuracy "
-            "escalation without code changes (AGENT-09)."
+            "OpenAI tool-capable model override. Empty string (default) means "
+            "fall back to the currently-selected LLM's model (see "
+            "LLMConfig.model in settings.yaml). Set this only when you want "
+            "the agentic loop to run a *different* model from the one used "
+            "for non-agent calls (AGENT-09 accuracy-escalation path)."
         ),
     )
     max_steps: int = Field(default=5, ge=1, le=20)

@@ -35,7 +35,10 @@ app:
   query_row_limit: 1000
   recent_query_history: 20
   agent:
-    model: "gpt-4.1-mini"
+    # 비워두면 현재 선택된 LLM(`llms` 중 default_llm 또는 사이드바에서 고른 항목)의
+    # model 값을 그대로 사용합니다. 에이전트만 별도 모델로 올리고 싶을 때만 지정하세요
+    # (예: 일반 답변은 gpt-oss-120b, 에이전트 루프만 gpt-4.1 로 정확도 escalation).
+    model: ""
     max_steps: 5
     row_cap: 200
     timeout_s: 30

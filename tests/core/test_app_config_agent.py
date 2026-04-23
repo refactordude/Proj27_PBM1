@@ -17,7 +17,7 @@ class AppConfigAgentFieldTest(unittest.TestCase):
     def test_app_config_has_agent_default(self) -> None:
         app_cfg = AppConfig()
         self.assertIsInstance(app_cfg.agent, AgentConfig)
-        self.assertEqual(app_cfg.agent.model, "gpt-4.1-mini")
+        self.assertEqual(app_cfg.agent.model, "")
         self.assertEqual(app_cfg.agent.max_steps, 5)
         self.assertEqual(app_cfg.agent.row_cap, 200)
         self.assertEqual(app_cfg.agent.timeout_s, 30)
@@ -54,7 +54,7 @@ class SettingsYamlRoundTripTest(unittest.TestCase):
             },
         }
         s = Settings.model_validate(minimal)
-        self.assertEqual(s.app.agent.model, "gpt-4.1-mini")
+        self.assertEqual(s.app.agent.model, "")
         self.assertEqual(s.app.agent.max_steps, 5)
         self.assertEqual(s.app.agent.allowed_tables, ["ufs_data"])
 
@@ -80,7 +80,7 @@ class SettingsDiskRoundTripTest(unittest.TestCase):
         save_settings(original)
         self.assertTrue(self._path.exists())
         loaded = load_settings()
-        self.assertEqual(loaded.app.agent.model, "gpt-4.1-mini")
+        self.assertEqual(loaded.app.agent.model, "")
         self.assertEqual(loaded.app.agent.allowed_tables, ["ufs_data"])
         self.assertEqual(loaded.app.agent.max_context_tokens, 30_000)
 
@@ -100,7 +100,7 @@ class SettingsDiskRoundTripTest(unittest.TestCase):
         self.assertEqual(loaded.app.default_database, "legacy")
         self.assertEqual(loaded.app.query_row_limit, 777)
         # The new agent block defaults in:
-        self.assertEqual(loaded.app.agent.model, "gpt-4.1-mini")
+        self.assertEqual(loaded.app.agent.model, "")
         self.assertEqual(loaded.app.agent.max_steps, 5)
 
 

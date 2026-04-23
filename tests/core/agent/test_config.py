@@ -12,7 +12,10 @@ from app.core.agent.config import AgentConfig
 class AgentConfigDefaultsTest(unittest.TestCase):
     def test_defaults(self) -> None:
         c = AgentConfig()
-        self.assertEqual(c.model, "gpt-4.1-mini")
+        # Empty default means "fall back to selected LLM's model" (see
+        # app.core.agent.loop._resolve_model). AGENT-09 override path kept
+        # alive by allowing operators to set a non-empty string.
+        self.assertEqual(c.model, "")
         self.assertEqual(c.max_steps, 5)
         self.assertEqual(c.row_cap, 200)
         self.assertEqual(c.timeout_s, 30)
@@ -25,7 +28,7 @@ class AgentConfigDefaultsTest(unittest.TestCase):
         self.assertEqual(
             dumped,
             {
-                "model": "gpt-4.1-mini",
+                "model": "",
                 "max_steps": 5,
                 "row_cap": 200,
                 "timeout_s": 30,

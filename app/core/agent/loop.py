@@ -53,6 +53,11 @@ def _build_system_prompt(allowed_tables: list[str]) -> str:
 
     The allowlist is user-editable (Settings → 앱 기본값), so the prompt is
     assembled per turn rather than baked into a module-level constant.
+
+    Phrasing is tuned for weaker tool-callers (e.g. open-weight models served
+    via OpenAI-compatible endpoints like gpt-oss-120b) — rules are explicit
+    and numbered so the model is less likely to skip tool use, parallel-call,
+    or hallucinate SQL without first inspecting schema.
     """
     if allowed_tables:
         tables_str = ", ".join(allowed_tables)
@@ -62,13 +67,47 @@ def _build_system_prompt(allowed_tables: list[str]) -> str:
         "You are a UFS (Universal Flash Storage) database assistant. "
         f"You have tools to introspect schema, run SELECT queries against the "
         f"{tables_str} table(s), normalize and pivot results, fetch UFS spec "
-        "sections, and produce Plotly charts. Use get_schema first if you need "
-        "orientation. Keep final answers concise, cite the columns you used, "
-        "and prefer charts for cross-device comparisons. Respond in Korean."
+        "sections, and produce Plotly charts.\n\n"
+        "Rules — follow exactly:\n"
+        "1. Call EXACTLY ONE tool per turn. Never emit multiple tool_calls in "
+        "a single assistant message.\n"
+        "2. If you do not know the column names, call get_schema FIRST before "
+        "run_sql. Do not invent column or table names.\n"
+        f"3. run_sql may only target: {tables_str}. SELECT-only, no DDL/DML.\n"
+        "4. Do not repeat a tool call with identical arguments — inspect the "
+        "previous tool result and either refine or finalize.\n"
+        "5. When you have enough data to answer, respond WITHOUT calling any "
+        "tool. That plain assistant message is the final answer.\n"
+        "6. Keep final answers concise, cite the columns you used, and prefer "
+        "charts for cross-device comparisons. Respond in Korean."
     )
 
 # char/4 휴리스틱 — CONTEXT.md의 토큰 추정 결정사항 반영.
 _CHARS_PER_TOKEN = 4
+
+
+def _resolve_model(ctx: AgentContext) -> str:
+    """Pick the chat.completions model name for this turn.
+
+    Precedence:
+    1. ``ctx.config.model`` (app.agent.model in settings.yaml) — only when
+       the operator wants the agentic loop to run a *different* model from
+       the selected LLM (AGENT-09 accuracy-escalation path).
+    2. ``ctx.llm_adapter.config.model`` — the model from the currently
+       selected LLM in Settings. This is the default so that changing the
+       active LLM in the sidebar also changes the agentic loop's model
+       without touching app.agent.model.
+
+    Returns an empty string only if both are unset; the OpenAI client will
+    then raise, which the loop's existing create() error path surfaces to
+    the UI (UX-07).
+    """
+    override = (ctx.config.model or "").strip()
+    if override:
+        return override
+    adapter_cfg = getattr(ctx.llm_adapter, "config", None)
+    adapter_model = getattr(adapter_cfg, "model", "") if adapter_cfg else ""
+    return (adapter_model or "").strip()
 
 
 def _build_openai_tools(allowed_tables: list[str]) -> list[dict[str, Any]]:
@@ -170,6 +209,9 @@ def run_agent_turn(
     ]
 
     cfg = ctx.config
+    # Resolve once per turn — if the operator flips the selected LLM mid-turn
+    # via Streamlit rerun, the next turn picks up the new model naturally.
+    model = _resolve_model(ctx)
     turn_start = time.monotonic()
     tool_call_count = 0
     cumulative_tokens = 0
@@ -195,7 +237,7 @@ def run_agent_turn(
             # 강제 종료도 1회의 create()이므로 llm_call_index를 증가시킨다.
             final_text, dur_ms = _forced_finalization(
                 client=client,
-                model=cfg.model,
+                model=model,
                 messages=messages,
                 tools=tools,
                 user=ctx.user,
@@ -216,7 +258,7 @@ def run_agent_turn(
         resp = None
         try:
             resp = client.chat.completions.create(
-                model=cfg.model,
+                model=model,
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
@@ -236,7 +278,7 @@ def run_agent_turn(
 
         log_llm(
             user=ctx.user,
-            model=cfg.model,
+            model=model,
             question=user_message if llm_call_index == 0 else "",
             duration_ms=dur_ms,
             error=error,

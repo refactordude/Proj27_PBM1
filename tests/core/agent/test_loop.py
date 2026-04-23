@@ -92,6 +92,10 @@ def _make_ctx(
     fake_client = MagicMock()
     fake_llm_adapter = MagicMock()
     fake_llm_adapter._client.return_value = fake_client
+    # _resolve_model falls back to the adapter's config.model when AgentConfig
+    # has no override. Set a concrete string so log_llm(model=...) stays JSON
+    # serializable and the loop mirrors real resolution behavior.
+    fake_llm_adapter.config.model = "test-model"
     fake_db_adapter = MagicMock()
 
     ctx = AgentContext(
