@@ -10,6 +10,7 @@ TEST-05 규율: 모델이 내뱉은 SQL 문자열 자체는 절대 assert하지 
 """
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
@@ -458,6 +459,267 @@ class DynamicPromptAndToolSpecTest(unittest.TestCase):
         self.assertIn("benchmarks_2025", pivot_spec["function"]["description"])
         cat_field = pivot_spec["function"]["parameters"]["properties"]["category"]
         self.assertIn("benchmarks_2025", cat_field["description"])
+
+
+class HarmonyFallbackParserTest(unittest.TestCase):
+    """_try_parse_harmony_tool_calls 단위 테스트 — gpt-oss-120b 호환성 (SC7).
+
+    vLLM/Ollama에서 --tool-call-parser openai 없이 gpt-oss-120b가 서빙되면
+    tool_calls 대신 content에 harmony 포맷 도구 호출 의도가 노출된다.
+    """
+
+    def setUp(self) -> None:
+        from app.core.agent.loop import _try_parse_harmony_tool_calls
+        self._parse = _try_parse_harmony_tool_calls
+        self._known = {"run_sql", "get_schema", "make_chart"}
+
+    def test_pattern_a_to_functions(self) -> None:
+        """패턴 A: to=functions.<name> ... {args_json} [<|call|>]"""
+        content = (
+            "I need to query the database.\n"
+            'to=functions.run_sql <|constrain|>json<|message|>{"sql": "SELECT COUNT(*) FROM ufs_data"}<|call|>'
+        )
+        result = self._parse(content, known_tool_names=self._known)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].function.name, "run_sql")
+        args = json.loads(result[0].function.arguments)
+        self.assertIn("sql", args)
+        # id는 "harmony_" 접두사로 시작해야 한다.
+        self.assertTrue(result[0].id.startswith("harmony_"))
+
+    def test_pattern_a_no_call_token(self) -> None:
+        """패턴 A: <|call|> 없이 행 끝에서 JSON이 끝나는 경우도 탐지한다."""
+        content = 'to=functions.get_schema {"dummy": true}'
+        # GetSchemaArgs에서 인수 없이도 JSON 객체이면 유효.
+        result = self._parse(content, known_tool_names=self._known)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result[0].function.name, "get_schema")
+
+    def test_pattern_b_json_code_block_with_name_key(self) -> None:
+        """패턴 B: ```json 블록 {"name":..., "arguments":{...}}"""
+        content = (
+            "Let me run a query.\n"
+            "```json\n"
+            '{"name": "run_sql", "arguments": {"sql": "SELECT 1"}}\n'
+            "```"
+        )
+        result = self._parse(content, known_tool_names=self._known)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result[0].function.name, "run_sql")
+        args = json.loads(result[0].function.arguments)
+        self.assertEqual(args["sql"], "SELECT 1")
+
+    def test_pattern_b_json_block_no_backtick_lang(self) -> None:
+        """패턴 B: ``` (언어 지정 없는) 코드 블록도 인식한다."""
+        content = (
+            "```\n"
+            '{"name": "get_schema", "arguments": {}}\n'
+            "```"
+        )
+        result = self._parse(content, known_tool_names=self._known)
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result[0].function.name, "get_schema")
+
+    def test_unknown_tool_name_returns_none(self) -> None:
+        """알 수 없는 도구 이름은 합성 tool_call로 승격하지 않는다."""
+        content = 'to=functions.dangerous_tool {"drop": "all"}<|call|>'
+        result = self._parse(content, known_tool_names=self._known)
+        self.assertIsNone(result)
+
+    def test_empty_content_returns_none(self) -> None:
+        """빈 content는 None을 반환한다."""
+        self.assertIsNone(self._parse("", known_tool_names=self._known))
+        self.assertIsNone(self._parse("   ", known_tool_names=self._known))
+
+    def test_plain_text_no_tool_intent_returns_none(self) -> None:
+        """도구 호출 의도 없는 일반 텍스트는 None을 반환한다."""
+        content = "데이터베이스에 3개의 디바이스가 있습니다."
+        self.assertIsNone(self._parse(content, known_tool_names=self._known))
+
+    def test_malformed_json_in_pattern_a_returns_none(self) -> None:
+        """패턴 A에서 JSON이 malformed이면 None을 반환한다."""
+        content = "to=functions.run_sql {broken json<|call|>"
+        self.assertIsNone(self._parse(content, known_tool_names=self._known))
+
+
+class HarmonyFallbackIntegrationTest(unittest.TestCase):
+    """harmony content 폴백 → 도구 디스패치 통합 테스트 (SC7-INT).
+
+    모델이 tool_calls=None이고 content에 harmony 포맷 도구 호출을 담은 응답을
+    반환할 때, 루프가 폴백 파서를 통해 올바르게 도구를 디스패치하는지 검증한다.
+    """
+
+    def test_harmony_pattern_a_dispatches_tool_and_then_answers(self) -> None:
+        """harmony 패턴 A content → run_sql 디스패치 → 최종 답변."""
+        ctx, fake_client = _make_ctx()
+
+        # 1st create(): tool_calls=None, content에 harmony 포맷.
+        harmony_msg = MagicMock()
+        harmony_msg.content = (
+            'to=functions.run_sql <|constrain|>json<|message|>'
+            '{"sql": "SELECT COUNT(*) FROM ufs_data"}<|call|>'
+        )
+        harmony_msg.tool_calls = None
+
+        harmony_choice = MagicMock()
+        harmony_choice.message = harmony_msg
+
+        harmony_resp = MagicMock()
+        harmony_resp.choices = [harmony_choice]
+        harmony_resp.usage = MagicMock(prompt_tokens=100, completion_tokens=30)
+
+        # 2nd create(): 정상 최종 답변.
+        final_resp = _make_final_answer_response("총 7개의 디바이스가 있습니다.")
+
+        fake_client.chat.completions.create.side_effect = [harmony_resp, final_resp]
+
+        fake_run_sql = _make_fake_run_sql(content="Rows: 1\n|count|\n|7|")
+
+        with patch.dict(
+            "app.core.agent.loop.TOOL_REGISTRY",
+            {"run_sql": fake_run_sql},
+            clear=False,
+        ):
+            steps = list(run_agent_turn("몇 개의 디바이스가 있나요?", ctx))
+
+        # 루프가 harmony content에서 run_sql을 추출해 디스패치했으므로
+        # tool_call, tool_result, final_answer 시퀀스여야 한다.
+        step_types = [s.step_type for s in steps]
+        self.assertEqual(step_types, ["tool_call", "tool_result", "final_answer"])
+        self.assertEqual(steps[0].tool_name, "run_sql")
+        self.assertEqual(steps[-1].content, "총 7개의 디바이스가 있습니다.")
+        self.assertFalse(steps[-1].budget_exhausted)
+
+        # run_sql 도구가 실제로 호출됐어야 한다.
+        self.assertTrue(fake_run_sql.called)
+
+    def test_harmony_pattern_b_json_block_dispatches_tool(self) -> None:
+        """harmony 패턴 B (JSON 코드 블록) → get_schema 디스패치."""
+        ctx, fake_client = _make_ctx()
+
+        harmony_msg = MagicMock()
+        harmony_msg.content = (
+            "스키마를 먼저 확인하겠습니다.\n"
+            "```json\n"
+            '{"name": "get_schema", "arguments": {}}\n'
+            "```"
+        )
+        harmony_msg.tool_calls = None
+
+        harmony_choice = MagicMock()
+        harmony_choice.message = harmony_msg
+
+        harmony_resp = MagicMock()
+        harmony_resp.choices = [harmony_choice]
+        harmony_resp.usage = MagicMock(prompt_tokens=80, completion_tokens=20)
+
+        final_resp = _make_final_answer_response("스키마를 가져왔습니다.")
+        fake_client.chat.completions.create.side_effect = [harmony_resp, final_resp]
+
+        fake_get_schema = MagicMock(
+            return_value=ToolResult(content='{"tables": {"ufs_data": ["id", "PLATFORM_ID"]}}')
+        )
+        fake_get_schema.name = "get_schema"
+
+        from app.core.agent.tools.get_schema import GetSchemaArgs
+        fake_get_schema.args_model = GetSchemaArgs
+
+        with patch.dict(
+            "app.core.agent.loop.TOOL_REGISTRY",
+            {"get_schema": fake_get_schema},
+            clear=False,
+        ):
+            steps = list(run_agent_turn("스키마 알려줘", ctx))
+
+        step_types = [s.step_type for s in steps]
+        self.assertEqual(step_types, ["tool_call", "tool_result", "final_answer"])
+        self.assertEqual(steps[0].tool_name, "get_schema")
+        self.assertTrue(fake_get_schema.called)
+
+
+class ParallelToolCallsBadRequestRetryTest(unittest.TestCase):
+    """parallel_tool_calls=False가 400 BadRequestError를 낼 때 재시도 동작 검증 (SC8).
+
+    gpt-oss-120b를 --enable-auto-tool-choice 없이 vLLM으로 서빙하면
+    parallel_tool_calls 파라미터 자체를 400으로 거부할 수 있다.
+    루프는 해당 파라미터 없이 재시도해 성공해야 한다.
+    """
+
+    def test_parallel_tool_calls_bad_request_retries_without_param(self) -> None:
+        from openai import BadRequestError as OAIBadRequestError
+
+        ctx, fake_client = _make_ctx()
+
+        # 1st create(): parallel_tool_calls 파라미터 때문에 400 BadRequestError.
+        bad_request_exc = OAIBadRequestError(
+            message="parallel_tool_calls is not supported by this endpoint",
+            response=MagicMock(status_code=400),
+            body={"error": {"message": "parallel_tool_calls is not supported"}},
+        )
+        # 2nd create() (재시도, parallel_tool_calls 없음): 정상 tool_call 응답.
+        tool_resp = _make_tool_call_response(
+            tool_name="run_sql",
+            arguments='{"sql": "SELECT 1"}',
+            call_id="call_retry",
+        )
+        # 3rd create(): 최종 답변.
+        final_resp = _make_final_answer_response("재시도 성공.")
+
+        fake_client.chat.completions.create.side_effect = [
+            bad_request_exc,
+            tool_resp,
+            final_resp,
+        ]
+
+        fake_run_sql = _make_fake_run_sql(content="ok")
+
+        with patch.dict(
+            "app.core.agent.loop.TOOL_REGISTRY",
+            {"run_sql": fake_run_sql},
+            clear=False,
+        ):
+            steps = list(run_agent_turn("테스트 질문", ctx))
+
+        # tool_call, tool_result, final_answer 시퀀스여야 한다.
+        step_types = [s.step_type for s in steps]
+        self.assertEqual(step_types, ["tool_call", "tool_result", "final_answer"])
+        self.assertEqual(steps[-1].content, "재시도 성공.")
+        self.assertFalse(steps[-1].budget_exhausted)
+
+        # create()는 총 3회: 1회 실패(400) + 1회 재시도(tool_call) + 1회 final.
+        self.assertEqual(fake_client.chat.completions.create.call_count, 3)
+
+        # 재시도 호출(2번째)에는 parallel_tool_calls 키가 없어야 한다.
+        retry_call_kwargs = fake_client.chat.completions.create.call_args_list[1].kwargs
+        self.assertNotIn("parallel_tool_calls", retry_call_kwargs)
+
+    def test_non_parallel_bad_request_not_retried(self) -> None:
+        """parallel_tool_calls와 무관한 BadRequestError는 재시도하지 않고 오류로 처리."""
+        from openai import BadRequestError as OAIBadRequestError
+
+        ctx, fake_client = _make_ctx()
+
+        other_bad_request = OAIBadRequestError(
+            message="model does not exist",
+            response=MagicMock(status_code=400),
+            body={"error": {"message": "model does not exist"}},
+        )
+        fake_client.chat.completions.create.side_effect = other_bad_request
+
+        steps = list(run_agent_turn("질문", ctx))
+
+        # 오류이므로 단일 final_answer + error 필드 설정.
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(steps[0].step_type, "final_answer")
+        self.assertIsNotNone(steps[0].error)
+        self.assertTrue(steps[0].budget_exhausted)
+        # create()는 재시도 없이 1회만 호출.
+        self.assertEqual(fake_client.chat.completions.create.call_count, 1)
 
 
 if __name__ == "__main__":

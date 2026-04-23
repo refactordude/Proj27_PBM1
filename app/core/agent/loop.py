@@ -5,21 +5,132 @@ max_steps / timeout_s / max_context_tokens 예산이 소진되면 강제 종료 
 한 번 발행해 final_answer를 반환한다.
 모든 chat.completions.create 호출은 ParallelToolCalls=False + _REQUEST_TIMEOUT을 사용한다.
 Streamlit 의존성 없음 — 순수 Python 모듈.
+
+gpt-oss-120b 호환성 노트:
+  gpt-oss-120b는 OpenAI의 내부 "harmony" 응답 포맷으로 학습되었다.
+  vLLM/Ollama 등 OpenAI 호환 프록시에서 서빙 시, --tool-call-parser openai
+  --enable-auto-tool-choice 플래그 없이는 프록시가 harmony 포맷의 도구 호출 의도를
+  tool_calls 필드로 변환하지 못하고 content 문자열에 그대로 노출한다.
+  _try_parse_harmony_tool_calls()는 이 케이스를 탐지해 합성 tool_call 객체를
+  재구성함으로써 클라이언트 측에서 폴백 처리한다.
+  참고: vLLM issue #22578, HuggingFace gpt-oss-120b/discussions/17
 """
 from __future__ import annotations
 
 import json
+import re
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Iterator, Literal
 
 from pydantic import ValidationError
+
+from openai import BadRequestError
 
 from app.adapters.llm.openai_adapter import _REQUEST_TIMEOUT
 from app.core.agent.context import AgentContext
 from app.core.agent.tools import TOOL_REGISTRY
 from app.core.agent.tools._base import ToolResult
 from app.core.logger import log_llm
+
+# harmony 포맷 도구 호출 탐지 패턴.
+# gpt-oss-120b는 OpenAI 호환 프록시(vLLM/Ollama)가 --tool-call-parser openai 없이
+# 서빙될 때 tool_calls 필드 대신 content에 다음 두 패턴 중 하나를 출력한다:
+#   패턴 A (전형적 harmony): "to=functions.<name> ... {<args_json>}"
+#   패턴 B (JSON 블록): ```json\n{"name":"<name>","arguments":{...}}\n```
+# 두 패턴 모두 TOOL_REGISTRY에 등록된 이름과 매칭되어야만 합성 tool_call로 승격한다.
+_HARMONY_TO_PATTERN = re.compile(
+    r"to=functions\.(\w+).*?(\{.*?\})\s*(?:<\|call\|>|$)",
+    re.DOTALL,
+)
+_HARMONY_JSON_BLOCK = re.compile(
+    r"```(?:json)?\s*\n?\s*(\{.*?\})\s*```",
+    re.DOTALL,
+)
+
+
+@dataclass
+class _SyntheticFunction:
+    """harmony 폴백용 합성 function 객체. OpenAI SDK ChoiceDeltaToolCallFunction과 동일 인터페이스."""
+
+    name: str
+    arguments: str
+
+
+@dataclass
+class _SyntheticToolCall:
+    """harmony 폴백용 합성 tool_call 객체. OpenAI SDK ChoiceDeltaToolCall과 동일 인터페이스."""
+
+    id: str
+    function: _SyntheticFunction
+
+
+def _try_parse_harmony_tool_calls(
+    content: str,
+    known_tool_names: set[str],
+) -> list[_SyntheticToolCall] | None:
+    """harmony 포맷 도구 호출 의도를 content에서 파싱해 합성 tool_call 목록을 반환한다.
+
+    gpt-oss-120b가 OpenAI 호환 프록시에서 서빙될 때 --tool-call-parser openai 플래그
+    없이는 프록시가 harmony 포맷 출력을 tool_calls 필드로 변환하지 못하고 content에
+    그대로 노출한다. 이 함수는 두 패턴을 탐지한다:
+
+      패턴 A: "to=functions.<name> ... <args_json> [<|call|>]"
+      패턴 B: 코드 블록 내 JSON {"name":"<name>","arguments":{...}}
+
+    반환값:
+      - 도구 이름이 known_tool_names에 속하면 합성 tool_call 목록 (len >= 1)
+      - 탐지 실패 또는 알 수 없는 도구 이름이면 None
+    """
+    if not content:
+        return None
+
+    # 패턴 A: to=functions.<name> ... {args_json}
+    for match in _HARMONY_TO_PATTERN.finditer(content):
+        tool_name = match.group(1)
+        args_raw = match.group(2).strip()
+        if tool_name not in known_tool_names:
+            continue
+        try:
+            # args_raw가 유효한 JSON인지 검증 (malformed이면 폴백하지 않음).
+            json.loads(args_raw)
+        except json.JSONDecodeError:
+            continue
+        return [
+            _SyntheticToolCall(
+                id=f"harmony_{uuid.uuid4().hex[:8]}",
+                function=_SyntheticFunction(name=tool_name, arguments=args_raw),
+            )
+        ]
+
+    # 패턴 B: JSON 코드 블록 {"name": "<tool>", "arguments": {...}}
+    for match in _HARMONY_JSON_BLOCK.finditer(content):
+        raw = match.group(1).strip()
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        tool_name = obj.get("name") or obj.get("function")
+        arguments = obj.get("arguments") or obj.get("parameters") or {}
+        if not isinstance(tool_name, str) or tool_name not in known_tool_names:
+            continue
+        if isinstance(arguments, dict):
+            args_str = json.dumps(arguments)
+        elif isinstance(arguments, str):
+            args_str = arguments
+        else:
+            continue
+        return [
+            _SyntheticToolCall(
+                id=f"harmony_{uuid.uuid4().hex[:8]}",
+                function=_SyntheticFunction(name=tool_name, arguments=args_str),
+            )
+        ]
+
+    return None
 
 
 @dataclass
@@ -151,6 +262,7 @@ def _forced_finalization(
     tools: list[dict[str, Any]],
     user: str,
     step_index: int,
+    extra_headers: dict | None,
 ) -> tuple[str, int]:
     """tool_choice='none' 강제 종료 호출. (final_text, duration_ms) 반환.
 
@@ -166,9 +278,30 @@ def _forced_finalization(
             tools=tools,
             tool_choice="none",
             parallel_tool_calls=False,
+            extra_headers=extra_headers,
             timeout=_REQUEST_TIMEOUT,
         )
         final_text = (resp.choices[0].message.content or "").strip()
+    except BadRequestError as exc:
+        # parallel_tool_calls 미지원 OpenAI 호환 엔드포인트 폴백.
+        _bad_req_msg = str(exc).lower()
+        if "parallel_tool_calls" in _bad_req_msg or "parallel" in _bad_req_msg:
+            try:
+                resp2 = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="none",
+                    extra_headers=extra_headers,
+                    timeout=_REQUEST_TIMEOUT,
+                )
+                final_text = (resp2.choices[0].message.content or "").strip()
+            except Exception as exc2:  # noqa: BLE001
+                error = str(exc2)
+                final_text = f"[loop error during forced finalization: {exc2}]"
+        else:
+            error = str(exc)
+            final_text = f"[loop error during forced finalization: {exc}]"
     except Exception as exc:  # noqa: BLE001
         error = str(exc)
         final_text = f"[loop error during forced finalization: {exc}]"
@@ -212,6 +345,7 @@ def run_agent_turn(
     # Resolve once per turn — if the operator flips the selected LLM mid-turn
     # via Streamlit rerun, the next turn picks up the new model naturally.
     model = _resolve_model(ctx)
+    extra_headers = ctx.llm_adapter._extra_headers()
     turn_start = time.monotonic()
     tool_call_count = 0
     cumulative_tokens = 0
@@ -242,6 +376,7 @@ def run_agent_turn(
                 tools=tools,
                 user=ctx.user,
                 step_index=llm_call_index,
+                extra_headers=extra_headers,
             )
             yield AgentStep(
                 step_type="final_answer",
@@ -253,6 +388,9 @@ def run_agent_turn(
             return
 
         # Main create() call — AGENT-01 (병렬 도구 호출 금지 리터럴).
+        # parallel_tool_calls=False는 OpenAI 정규 API에서는 유효하지만,
+        # vLLM/Ollama 등 OpenAI 호환 프록시에서는 BadRequestError(400)를 낼 수 있다.
+        # 이 경우 해당 파라미터를 제외하고 재시도한다 (gpt-oss-120b 호환성).
         start = time.perf_counter()
         error: str | None = None
         resp = None
@@ -263,8 +401,27 @@ def run_agent_turn(
                 tools=tools,
                 tool_choice="auto",
                 parallel_tool_calls=False,
+                extra_headers=extra_headers,
                 timeout=_REQUEST_TIMEOUT,
             )
+        except BadRequestError as exc:
+            # OpenAI 호환 엔드포인트가 parallel_tool_calls를 지원하지 않으면
+            # 400 BadRequest를 반환한다. 파라미터를 제거하고 재시도한다.
+            _bad_req_msg = str(exc).lower()
+            if "parallel_tool_calls" in _bad_req_msg or "parallel" in _bad_req_msg:
+                try:
+                    resp = client.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        tools=tools,
+                        tool_choice="auto",
+                        extra_headers=extra_headers,
+                        timeout=_REQUEST_TIMEOUT,
+                    )
+                except Exception as exc2:  # noqa: BLE001
+                    error = str(exc2)
+            else:
+                error = str(exc)
         except Exception as exc:  # noqa: BLE001
             error = str(exc)
         dur_ms = int((time.perf_counter() - start) * 1000)
@@ -318,6 +475,19 @@ def run_agent_turn(
 
         assistant_msg = resp.choices[0].message
         tool_calls = getattr(assistant_msg, "tool_calls", None) or []
+
+        # gpt-oss-120b harmony 폴백: tool_calls가 비어 있고 content가 있을 때,
+        # content 내 harmony 포맷 도구 호출 의도를 탐지해 합성 tool_call로 승격.
+        # 이 경로는 vLLM/Ollama 프록시에서 --tool-call-parser openai 플래그 없이
+        # gpt-oss-120b가 서빙될 때 발생한다. OpenAI 정규 엔드포인트에선
+        # tool_calls가 이미 채워져 있으므로 이 분기는 건너뛰어진다.
+        if not tool_calls:
+            raw_content = assistant_msg.content or ""
+            harmony_calls = _try_parse_harmony_tool_calls(
+                raw_content, known_tool_names=set(TOOL_REGISTRY)
+            )
+            if harmony_calls:
+                tool_calls = harmony_calls
 
         # Terminal branch (AGENT-02): no tool_calls → final answer.
         if not tool_calls:
