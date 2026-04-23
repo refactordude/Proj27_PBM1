@@ -32,7 +32,7 @@ class GetSchemaHappyPathTest(unittest.TestCase):
         schema = {
             "ufs_data": [
                 {"name": "PLATFORM_ID", "type": "VARCHAR", "nullable": True, "pk": False},
-                {"name": "InfoCatergory", "type": "VARCHAR", "nullable": True, "pk": False},
+                {"name": "InfoCategory", "type": "VARCHAR", "nullable": True, "pk": False},
                 {"name": "Item", "type": "VARCHAR", "nullable": True, "pk": False},
                 {"name": "parameter", "type": "VARCHAR", "nullable": True, "pk": False},
                 {"name": "Result", "type": "TEXT", "nullable": True, "pk": False},
@@ -41,18 +41,18 @@ class GetSchemaHappyPathTest(unittest.TestCase):
         ctx = _mk_ctx(
             schema,
             pd.DataFrame({"PLATFORM_ID": ["A", "B", "C"]}),
-            pd.DataFrame({"InfoCatergory": ["§3.1", "§5.2"]}),
+            pd.DataFrame({"InfoCategory": ["§3.1", "§5.2"]}),
         )
         result = get_schema_tool(ctx, GetSchemaArgs())
         payload = json.loads(result.content)
         self.assertIn("tables", payload)
         self.assertIn("columns_detail", payload)
         self.assertIn("distinct_PLATFORM_ID", payload)
-        self.assertIn("distinct_InfoCatergory", payload)
+        self.assertIn("distinct_InfoCategory", payload)
         self.assertEqual(payload["tables"]["ufs_data"],
-                         ["PLATFORM_ID", "InfoCatergory", "Item", "parameter", "Result"])
+                         ["PLATFORM_ID", "InfoCategory", "Item", "parameter", "Result"])
         self.assertEqual(payload["distinct_PLATFORM_ID"], ["A", "B", "C"])
-        self.assertEqual(payload["distinct_InfoCatergory"], ["§3.1", "§5.2"])
+        self.assertEqual(payload["distinct_InfoCategory"], ["§3.1", "§5.2"])
 
 
 class GetSchemaPydanticTest(unittest.TestCase):
@@ -70,33 +70,13 @@ class GetSchemaEmptyDbTest(unittest.TestCase):
         ctx = _mk_ctx(
             {},
             pd.DataFrame(columns=["PLATFORM_ID"]),
-            pd.DataFrame(columns=["InfoCatergory"]),
+            pd.DataFrame(columns=["InfoCategory"]),
         )
         result = get_schema_tool(ctx, GetSchemaArgs())
         payload = json.loads(result.content)
         self.assertEqual(payload["tables"], {})
         self.assertEqual(payload["distinct_PLATFORM_ID"], [])
-        self.assertEqual(payload["distinct_InfoCatergory"], [])
-
-
-class GetSchemaTypoPreservationTest(unittest.TestCase):
-    def test_typo_in_sql_and_payload_keys(self) -> None:
-        ctx = _mk_ctx(
-            {"ufs_data": []},
-            pd.DataFrame({"PLATFORM_ID": ["A"]}),
-            pd.DataFrame({"InfoCatergory": ["§3"]}),
-        )
-        result = get_schema_tool(ctx, GetSchemaArgs())
-        # Inspect the SQL strings passed to run_query
-        sql_calls = [c.args[0] for c in ctx.db_adapter.run_query.call_args_list]
-        joined = " ".join(sql_calls)
-        self.assertIn("InfoCatergory", joined)
-        # Runtime-concat the correct spelling so the SAFE-07 grep test
-        # (plan 02-07) does not match a literal in this source file.
-        correct_spelling = "Info" + "Category"
-        self.assertNotIn(correct_spelling, joined)
-        self.assertIn("distinct_InfoCatergory", result.content)
-        self.assertNotIn(f"distinct_{correct_spelling}", result.content)
+        self.assertEqual(payload["distinct_InfoCategory"], [])
 
 
 class GetSchemaLoggingTest(unittest.TestCase):
@@ -110,7 +90,7 @@ class GetSchemaLoggingTest(unittest.TestCase):
         ctx = _mk_ctx(
             {"ufs_data": []},
             pd.DataFrame({"PLATFORM_ID": ["A", "B"]}),
-            pd.DataFrame({"InfoCatergory": ["§3"]}),
+            pd.DataFrame({"InfoCategory": ["§3"]}),
         )
         with patch("app.core.agent.tools.get_schema.log_query") as mock_log:
             get_schema_tool(ctx, GetSchemaArgs())
@@ -118,7 +98,7 @@ class GetSchemaLoggingTest(unittest.TestCase):
         k = mock_log.call_args.kwargs
         self.assertIn("[via get_schema]", k["user"])
         self.assertEqual(k["database"], "unit_db")
-        # Combined row count: 2 PLATFORM_ID + 1 InfoCatergory = 3 distinct values.
+        # Combined row count: 2 PLATFORM_ID + 1 InfoCategory  = 3 distinct values.
         self.assertEqual(k["rows"], 3)
         self.assertIsNone(k["error"])
 

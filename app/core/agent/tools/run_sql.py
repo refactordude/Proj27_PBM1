@@ -30,9 +30,9 @@ class RunSqlArgs(BaseModel):
     sql: str = Field(
         ...,
         description=(
-            "SELECT-only SQL against ufs_data. A LIMIT of at most row_cap is "
-            "auto-injected before execution. Subqueries/CTEs/UNION allowed only "
-            "within the configured table allowlist."
+            "SELECT-only SQL against the configured allowlist table(s). A "
+            "LIMIT of at most row_cap is auto-injected before execution. "
+            "Subqueries/CTEs/UNION allowed only within the allowlist."
         ),
     )
 
@@ -63,6 +63,37 @@ class RunSqlTool:
         "Execute a SELECT against the configured MySQL DB and return framed "
         "rows (untrusted-data envelope, per-cell 500-char cap)."
     )
+
+    def describe_for(self, allowed_tables: list[str]) -> dict:
+        """Build an OpenAI tool spec with the allowlist injected into descriptions.
+
+        The configured table names appear in the top-level tool description and
+        in the `sql` field description so the LLM sees the real target table(s)
+        at the JSON-schema level.
+        """
+        tables_str = (
+            ", ".join(allowed_tables)
+            if allowed_tables
+            else "the configured allowlist table"
+        )
+        schema = self.args_model.model_json_schema()
+        schema["properties"]["sql"]["description"] = (
+            f"SELECT-only SQL against {tables_str}. A LIMIT of at most row_cap "
+            "is auto-injected before execution. Subqueries/CTEs/UNION allowed "
+            "only within the configured table allowlist."
+        )
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": (
+                    f"Execute a SELECT against the configured MySQL DB "
+                    f"({tables_str}) and return framed rows "
+                    "(untrusted-data envelope, per-cell 500-char cap)."
+                ),
+                "parameters": schema,
+            },
+        }
 
     def __call__(self, ctx: AgentContext, args: BaseModel) -> ToolResult:
         assert isinstance(args, RunSqlArgs)

@@ -148,11 +148,30 @@ with tab_app:
     hist = st.number_input(
         "최근 질의 보관 개수", 1, 200, s.app.recent_query_history, 1
     )
+
+    st.divider()
+    st.subheader("에이전트 허용 테이블")
+    st.caption(
+        "Ask-AI 에이전트가 run_sql로 질의할 수 있는 테이블 이름입니다. "
+        "한 줄에 하나씩 입력하세요. 최소 1개 필요."
+    )
+    tables_text = st.text_area(
+        "허용 테이블",
+        value="\n".join(s.app.agent.allowed_tables),
+        height=100,
+        label_visibility="collapsed",
+    )
+
     if st.button("저장", type="primary"):
-        s.app.default_database = "" if default_db == "(선택 없음)" else default_db
-        s.app.default_llm = "" if default_llm == "(선택 없음)" else default_llm
-        s.app.query_row_limit = int(row_limit)
-        s.app.recent_query_history = int(hist)
-        save_settings(s)
-        invalidate_settings()
-        st.success("저장됨")
+        parsed_tables = [t.strip() for t in tables_text.splitlines() if t.strip()]
+        if not parsed_tables:
+            st.error("허용 테이블은 최소 1개 이상 필요합니다.")
+        else:
+            s.app.default_database = "" if default_db == "(선택 없음)" else default_db
+            s.app.default_llm = "" if default_llm == "(선택 없음)" else default_llm
+            s.app.query_row_limit = int(row_limit)
+            s.app.recent_query_history = int(hist)
+            s.app.agent.allowed_tables = parsed_tables
+            save_settings(s)
+            invalidate_settings()
+            st.success("저장됨")

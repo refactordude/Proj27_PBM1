@@ -50,7 +50,7 @@ class PivotHappyPathTest(unittest.TestCase):
         self.assertEqual(cached.shape, (2, 2))
         # verify SQL shape
         sql = ctx.db_adapter.run_query.call_args[0][0]
-        self.assertIn("InfoCatergory = '§3'", sql)
+        self.assertIn("InfoCategory  = '§3'", sql)
         self.assertIn("Item = 'wb_enable'", sql)
         self.assertIn("LIMIT 200", sql)
 
@@ -104,7 +104,7 @@ class PivotSqlEscapeTest(unittest.TestCase):
         ctx = _mk_ctx(_LONG_DF, tool_call_id="call_esc")
         pivot_to_wide_tool(ctx, PivotToWideArgs(category="O'Brien", item="wb_enable"))
         sql = ctx.db_adapter.run_query.call_args[0][0]
-        self.assertIn("InfoCatergory = 'O''Brien'", sql)
+        self.assertIn("InfoCategory  = 'O''Brien'", sql)
 
 
 class PivotSafetyGatesTest(unittest.TestCase):
@@ -140,12 +140,11 @@ class PivotSafetyGatesTest(unittest.TestCase):
         self.assertEqual(call_args[0][1], ["ufs_data"])
 
     def test_empty_allowlist_fallback_is_rejected(self) -> None:
-        """If `allowed_tables` is empty, pivot_to_wide falls back to the
-        hard-coded 'ufs_data' table name in its SQL. The allowlist gate
-        must then reject (empty allowlist means nothing is allowed),
-        fail-closed before the DB adapter is called. This guards the
-        WR-03 concern about the hard-coded fallback drifting from the
-        single source of truth in config.
+        """If `allowed_tables` is empty, pivot_to_wide must fail-closed
+        before building any SQL and before touching the DB adapter.
+        The Settings UI refuses to save an empty list, so reaching this
+        branch indicates misconfiguration; silent fallback would hide
+        the bug (WR-03 concern: single source of truth in config).
         """
         ctx = _mk_ctx(_LONG_DF, tool_call_id="call_violate")
         ctx.config.allowed_tables = []

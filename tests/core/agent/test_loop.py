@@ -16,7 +16,12 @@ from unittest.mock import MagicMock, patch
 
 from app.core.agent.config import AgentConfig
 from app.core.agent.context import AgentContext
-from app.core.agent.loop import AgentStep, run_agent_turn
+from app.core.agent.loop import (
+    AgentStep,
+    _build_openai_tools,
+    _build_system_prompt,
+    run_agent_turn,
+)
 from app.core.agent.tools._base import ToolResult
 from app.core.agent.tools.run_sql import RunSqlArgs
 
@@ -410,6 +415,45 @@ class StatelessPerTurnTest(unittest.TestCase):
         self.assertIsNot(ctx1._df_cache, ctx2._df_cache)
         # ctx2는 call_ghost를 본 적이 없어야 한다 (AGENT-07 stateless per turn).
         self.assertNotIn("call_ghost", ctx2._df_cache)
+
+
+class DynamicPromptAndToolSpecTest(unittest.TestCase):
+    """Configured allowed_tables must flow into the system prompt and the
+    OpenAI tool specs (run_sql, pivot_to_wide) at turn time.
+
+    Regression guard for making the table name user-configurable: the LLM
+    must see the real configured table list, not a hardcoded literal.
+    """
+
+    def test_system_prompt_includes_configured_tables(self) -> None:
+        prompt = _build_system_prompt(["benchmarks_2025", "archive"])
+        self.assertIn("benchmarks_2025", prompt)
+        self.assertIn("archive", prompt)
+        self.assertNotIn("ufs_data", prompt)
+
+    def test_system_prompt_empty_list_uses_placeholder(self) -> None:
+        prompt = _build_system_prompt([])
+        # Placeholder should not leak a concrete table name.
+        self.assertNotIn("ufs_data", prompt)
+        self.assertIn("configured", prompt.lower())
+
+    def test_tool_specs_inject_configured_tables(self) -> None:
+        specs = _build_openai_tools(["benchmarks_2025", "archive"])
+        by_name = {s["function"]["name"]: s for s in specs}
+        self.assertIn("run_sql", by_name)
+        self.assertIn("pivot_to_wide", by_name)
+
+        run_sql_spec = by_name["run_sql"]
+        self.assertIn("benchmarks_2025", run_sql_spec["function"]["description"])
+        sql_field = run_sql_spec["function"]["parameters"]["properties"]["sql"]
+        self.assertIn("benchmarks_2025", sql_field["description"])
+        self.assertNotIn("ufs_data", run_sql_spec["function"]["description"])
+
+        pivot_spec = by_name["pivot_to_wide"]
+        # pivot_to_wide uses the primary (first) table name.
+        self.assertIn("benchmarks_2025", pivot_spec["function"]["description"])
+        cat_field = pivot_spec["function"]["parameters"]["properties"]["category"]
+        self.assertIn("benchmarks_2025", cat_field["description"])
 
 
 if __name__ == "__main__":
