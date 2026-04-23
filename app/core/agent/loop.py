@@ -48,23 +48,42 @@ class AgentStep:
     budget_exhausted: bool = False
 
 
-_SYSTEM_PROMPT = (
-    "You are a UFS (Universal Flash Storage) database assistant. "
-    "You have tools to introspect schema, run SELECT queries against the "
-    "ufs_data table, normalize and pivot results, fetch UFS spec sections, "
-    "and produce Plotly charts. Use get_schema first if you need orientation. "
-    "Keep final answers concise, cite the columns you used, and prefer charts "
-    "for cross-device comparisons."
-)
+def _build_system_prompt(allowed_tables: list[str]) -> str:
+    """Build the system prompt with the configured allowed_tables injected.
+
+    The allowlist is user-editable (Settings → 앱 기본값), so the prompt is
+    assembled per turn rather than baked into a module-level constant.
+    """
+    if allowed_tables:
+        tables_str = ", ".join(allowed_tables)
+    else:
+        tables_str = "the configured allowlist table"
+    return (
+        "You are a UFS (Universal Flash Storage) database assistant. "
+        f"You have tools to introspect schema, run SELECT queries against the "
+        f"{tables_str} table(s), normalize and pivot results, fetch UFS spec "
+        "sections, and produce Plotly charts. Use get_schema first if you need "
+        "orientation. Keep final answers concise, cite the columns you used, "
+        "and prefer charts for cross-device comparisons. Respond in Korean."
+    )
 
 # char/4 휴리스틱 — CONTEXT.md의 토큰 추정 결정사항 반영.
 _CHARS_PER_TOKEN = 4
 
 
-def _build_openai_tools() -> list[dict[str, Any]]:
-    """TOOL_REGISTRY → OpenAI chat.completions tools=[] 스키마 리스트."""
+def _build_openai_tools(allowed_tables: list[str]) -> list[dict[str, Any]]:
+    """TOOL_REGISTRY → OpenAI chat.completions tools=[] 스키마 리스트.
+
+    Tools may optionally implement ``describe_for(allowed_tables)`` to inject
+    the configured table names into their description + JSON schema. Tools
+    without that hook fall back to their static ``description`` + args_model.
+    """
     tools: list[dict[str, Any]] = []
     for tool in TOOL_REGISTRY.values():
+        describe_for = getattr(tool, "describe_for", None)
+        if callable(describe_for):
+            tools.append(describe_for(allowed_tables))
+            continue
         tools.append(
             {
                 "type": "function",
@@ -144,9 +163,9 @@ def run_agent_turn(
     OBS-02: 매 create() 라운드트립마다 log_llm() 한 줄 기록.
     """
     client = ctx.llm_adapter._client()  # OpenAIAdapter._client() → openai.OpenAI
-    tools = _build_openai_tools()
+    tools = _build_openai_tools(ctx.config.allowed_tables)
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _build_system_prompt(ctx.config.allowed_tables)},
         {"role": "user", "content": user_message},
     ]
 

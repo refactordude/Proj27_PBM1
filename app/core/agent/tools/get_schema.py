@@ -1,6 +1,6 @@
 """DB 스키마 + key 컬럼 distinct 값 조회 도구 (TOOL-02).
 
-에이전트가 턴의 맨 앞에서 호출해 ufs_data의 컬럼 이름·타입과
+에이전트가 턴의 맨 앞에서 호출해 허용 테이블의 컬럼 이름·타입과
 PLATFORM_ID, InfoCatergory(컬럼명 오타는 DB 원본 보존 — SAFE-07)의
 distinct 값을 한 번에 받아 필터 인자 환각을 줄인다.
 """
@@ -34,7 +34,15 @@ class GetSchemaTool:
     def __call__(self, ctx: AgentContext, args: BaseModel) -> ToolResult:
         assert isinstance(args, GetSchemaArgs)
         tables = ctx.config.allowed_tables
-        target = tables[0] if tables else "ufs_data"
+        if not tables:
+            return ToolResult(
+                content=(
+                    "get_schema unavailable: no table configured in "
+                    "allowed_tables. Update Settings → 앱 기본값 → "
+                    "에이전트 허용 테이블."
+                )
+            )
+        target = tables[0]
 
         # WR-04: emit exactly ONE log_query entry per invocation covering the
         # whole get_schema round-trip (schema lookup + both DISTINCT queries),

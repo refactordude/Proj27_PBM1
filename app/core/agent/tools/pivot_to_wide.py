@@ -1,9 +1,9 @@
 """long→wide 피벗 도구 (TOOL-03, UFS 스펙 §3).
 
-ufs_data에서 InfoCatergory/Item으로 좁힌 long-form 결과를 받아
-df.pivot_table(index='parameter', columns='PLATFORM_ID', values='Result',
-               aggfunc='first')로 wide-form으로 변환하고
-ctx._df_cache에 저장한 뒤 df_ref를 돌려준다.
+허용 테이블(allowed_tables[0])에서 InfoCatergory/Item으로 좁힌 long-form
+결과를 받아 df.pivot_table(index='parameter', columns='PLATFORM_ID',
+values='Result', aggfunc='first')로 wide-form으로 변환하고 ctx._df_cache에
+저장한 뒤 df_ref를 돌려준다.
 """
 from __future__ import annotations
 
@@ -23,13 +23,14 @@ class PivotToWideArgs(BaseModel):
     category: str = Field(
         ...,
         description=(
-            "Filter value for ufs_data.InfoCatergory (DB column name is "
-            "misspelled 'Catergory' — use the typo when calling)."
+            "Filter value for the allowlist table's InfoCatergory column "
+            "(DB column name is misspelled 'Catergory' — use the typo "
+            "when calling)."
         ),
     )
     item: str = Field(
         ...,
-        description="Filter value for ufs_data.Item.",
+        description="Filter value for the allowlist table's Item column.",
     )
 
 
@@ -41,15 +42,55 @@ class PivotToWideTool:
     name: str = "pivot_to_wide"
     args_model: type[BaseModel] = PivotToWideArgs
     description: str = (
-        "Reshape long-form (parameter, PLATFORM_ID, Result) rows from ufs_data "
-        "into a wide DataFrame with PLATFORM_ID as columns. Duplicates collapse "
-        "via aggfunc='first'. Result is cached; df_ref is returned for "
-        "normalize_result / make_chart."
+        "Reshape long-form (parameter, PLATFORM_ID, Result) rows from the "
+        "configured allowlist table into a wide DataFrame with PLATFORM_ID "
+        "as columns. Duplicates collapse via aggfunc='first'. Result is "
+        "cached; df_ref is returned for normalize_result / make_chart."
     )
+
+    def describe_for(self, allowed_tables: list[str]) -> dict:
+        """Build an OpenAI tool spec with the primary table injected."""
+        primary = allowed_tables[0] if allowed_tables else "the allowlist table"
+        schema = self.args_model.model_json_schema()
+        schema["properties"]["category"]["description"] = (
+            f"Filter value for {primary}.InfoCatergory (DB column name is "
+            "misspelled 'Catergory' — use the typo when calling)."
+        )
+        schema["properties"]["item"]["description"] = (
+            f"Filter value for {primary}.Item."
+        )
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": (
+                    "Reshape long-form (parameter, PLATFORM_ID, Result) rows "
+                    f"from {primary} into a wide DataFrame with PLATFORM_ID "
+                    "as columns. Duplicates collapse via aggfunc='first'. "
+                    "Result is cached; df_ref is returned for "
+                    "normalize_result / make_chart."
+                ),
+                "parameters": schema,
+            },
+        }
 
     def __call__(self, ctx: AgentContext, args: BaseModel) -> ToolResult:
         assert isinstance(args, PivotToWideArgs)
-        table = ctx.config.allowed_tables[0] if ctx.config.allowed_tables else "ufs_data"
+        if not ctx.config.allowed_tables:
+            # Fail-closed before building SQL. Preserve the OBS-01 audit
+            # invariant (one log_query entry per invocation) so downstream
+            # log analysis does not see a silent gap.
+            reason = "no table configured in allowed_tables"
+            log_query(
+                user=f"{ctx.user} [via pivot_to_wide]",
+                database=ctx.db_name,
+                sql="",
+                rows=None,
+                duration_ms=0.0,
+                error=reason,
+            )
+            return ToolResult(content=f"SQL rejected: {reason}.")
+        table = ctx.config.allowed_tables[0]
         esc_cat = _sql_escape(args.category)
         esc_item = _sql_escape(args.item)
         sql = (
